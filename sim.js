@@ -2,9 +2,16 @@
 
 // ----- LTV 규칙 -----
 const LTV_RULES = [
+  // 투기 아님
   { isSpeculative: false, lifeFirst: false, priceMin: 0, priceMax: Infinity, ltv: 0.7, maxLoan: null },
   { isSpeculative: false, lifeFirst: true, priceMin: 0, priceMax: Infinity, ltv: 0.7, maxLoan: null },
-  { isSpeculative: true, lifeFirst: true, priceMin: 0, priceMax: Infinity, ltv: 0.7, maxLoan: null },
+
+  // 투기: 생애최초 70%이지만 구간별 cap 적용
+  { isSpeculative: true, lifeFirst: true, priceMin: 0, priceMax: 1_500_000_000, ltv: 0.7, maxLoan: 600_000_000 },
+  { isSpeculative: true, lifeFirst: true, priceMin: 1_500_000_000, priceMax: 2_500_000_000, ltv: 0.7, maxLoan: 400_000_000 },
+  { isSpeculative: true, lifeFirst: true, priceMin: 2_500_000_000, priceMax: Infinity, ltv: 0.7, maxLoan: 200_000_000 },
+
+  // 투기 + 비생애: 40% + 구간 cap
   { isSpeculative: true, lifeFirst: false, priceMin: 0, priceMax: 1_500_000_000, ltv: 0.4, maxLoan: 600_000_000 },
   { isSpeculative: true, lifeFirst: false, priceMin: 1_500_000_000, priceMax: 2_500_000_000, ltv: 0.4, maxLoan: 400_000_000 },
   { isSpeculative: true, lifeFirst: false, priceMin: 2_500_000_000, priceMax: Infinity, ltv: 0.4, maxLoan: 200_000_000 },
