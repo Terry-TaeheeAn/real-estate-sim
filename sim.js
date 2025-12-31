@@ -37,6 +37,7 @@ const BROKERAGE_FEE_TABLE = [
 ];
 
 // ----- 채권 (미정: 0 처리) -----
+// TODO: 채권 요율/상한 확정 후 적용 예정. 현재는 0 처리.
 const BOND_TABLE = [];
 
 // ----- 기타비용 -----
@@ -206,13 +207,16 @@ function computeFormResult(form) {
   const bond = computeBondAmount(form.price);
   const otherMisc = OTHER_COST_DEFAULTS.miscCost;
   const totalAcquisition = taxes.total + brokerage + bond + otherMisc;
-  const neededCash = form.price - loanLimit;
+  const neededCash = form.price + totalAcquisition - loanLimit; // 매매가 + 세금비용 합계 - 대출
   const shortage = neededCash - form.equity;
   const repaymentType = form.repaymentType ?? DSR_DEFAULTS.repaymentType;
   const rate = form.rate ?? DSR_DEFAULTS.baseInterest;
   const years = form.years ?? DSR_DEFAULTS.defaultYears;
+  const canPurchase = shortage <= 0;
+  const yearlySaving = form.incomeAnnual > 0 ? form.incomeAnnual : 0;
+  const yearsToSave = shortage > 0 && yearlySaving > 0 ? Math.ceil((shortage / yearlySaving) * 10) / 10 : 0;
   const monthlyPayment = computeMonthlyPayment(loanLimit, rate, years, repaymentType);
-  return { loanLimit, ltvLimit, dsrLimit: dsr.limit, monthlyPayment, taxes, brokerage, bond, otherMisc, totalAcquisition, neededCash, shortage, equity: form.equity };
+  return { loanLimit, ltvLimit, dsrLimit: dsr.limit, monthlyPayment, taxes, brokerage, bond, otherMisc, totalAcquisition, neededCash, shortage, equity: form.equity, canPurchase, yearsToSave };
 }
 
 // ----- UI -----
@@ -224,21 +228,23 @@ const commaFields = ["price", "incomeAnnual", "equity"];
 const percentFields = ["rate"]; // 입력을 % 단위로 받고 내부 계산은 소수로 변환
 
 const fields = [
-  { key: "price", label: "매매가 (원)", type: "text", placeholder: "700,000,000" },
-  { key: "incomeAnnual", label: "연소득 (원)", type: "text", placeholder: "60,000,000" },
-  { key: "equity", label: "순자산 (원)", type: "text", placeholder: "200,000,000" },
-  { key: "address", label: "주소", type: "text", placeholder: "서울시 강남구 ..." },
+  { key: "price", label: "매매가 (원)", type: "text" },
+  { key: "incomeAnnual", label: "연소득 (원)", type: "text" },
+  { key: "equity", label: "순자산 (원)", type: "text" },
+  { key: "address", label: "주소", type: "text" },
   { key: "homeCount", label: "매입 후 주택 수", type: "number", placeholder: "1" },
   { key: "lifeFirst", label: "생애최초 여부", type: "select", options: ["false", "true"], display: { false: "아니오", true: "예" } },
   { key: "areaOver85", label: "전용 85㎡ 초과", type: "select", options: ["false", "true"], display: { false: "이하", true: "초과" } },
   { key: "productType", label: "상품구분", type: "select", options: ["아파트", "오피스텔", "기타"] },
   { key: "tradeType", label: "거래유형", type: "select", options: ["매매", "임대차"] },
-  { key: "years", label: "대출 만기 (년)", type: "number", placeholder: "30" },
-  { key: "rate", label: "금리 (연, %)", type: "text", placeholder: "4.00" },
+  { key: "years", label: "대출 만기 (년)", type: "select", options: ["10", "20", "30"] },
+  { key: "rate", label: "금리 (연, %)", type: "text" },
   { key: "repaymentType", label: "상환방식", type: "select", options: ["원리금균등", "원금균등", "원금만기일시상환"] },
 ];
 
 const inputs = {};
+let rpAptEl, rpDealYmdEl, rpSearchBtn, rpStatusEl, rpSuggestionsEl;
+const RP = typeof window !== "undefined" && window.RealPrice ? window.RealPrice : null;
 
 function parseNumberField(el) {
   const raw = (el.value || "").toString().replace(/,/g, "").trim();
@@ -319,6 +325,89 @@ fields.forEach((f) => {
   }
 });
 
+// ----- 실거래가 검색 UI -----
+rpAptEl = document.getElementById("rp-apt");
+rpDealYmdEl = document.getElementById("rp-dealymd");
+rpSearchBtn = document.getElementById("rp-search");
+rpStatusEl = document.getElementById("rp-status");
+rpSuggestionsEl = document.getElementById("rp-suggestions");
+
+function clearSuggestions() {
+  rpSuggestionsEl.innerHTML = "";
+}
+
+function renderSuggestions(list) {
+  if (!list || list.length === 0) {
+    rpSuggestionsEl.innerHTML = '<div style="color:#94a3b8;">검색 결과 없음</div>';
+    return;
+  }
+  rpSuggestionsEl.innerHTML = "";
+  list.forEach((it) => {
+    const sqm = Number(it.excluUseAr) || 0;
+    const py = sqm ? (sqm * 0.3025).toFixed(1) : "-";
+    const row = document.createElement("div");
+    row.style.padding = "6px";
+    row.style.borderBottom = "1px solid #e2e8f0";
+    row.style.cursor = "pointer";
+      const addr = RP && RP.buildAddress ? RP.buildAddress(it) : "";
+      row.innerHTML = `
+        <div style="font-weight:600;">${it.aptNm || "-"} <span style="color:#64748b; font-weight:400; font-size:12px;">(${it.lawdCd})</span></div>
+        <div style="color:#475569; font-size:12px;">거래가: ${formatKRW(it.dealAmount)} | 일자: ${it.dealYmd} | 면적: ${it.excluUseAr || "-"}㎡ (${py}평) | 층: ${it.floor || "-"}</div>
+        <div style="color:#475569; font-size:12px;">주소: ${addr}</div>
+      `;
+    row.addEventListener("click", () => {
+      // 가격/주소 자동 입력
+      const amt = it.dealAmount || 0;
+      inputs.price.value = amt.toLocaleString("ko-KR");
+      formatNumberField(inputs.price);
+        if (addr) {
+          inputs.address.value = addr;
+      }
+      // 실거래가 API는 아파트 매매 기준 → 상품구분/거래유형을 자동 설정
+      if (inputs.productType) {
+        inputs.productType.value = "아파트";
+      }
+      if (inputs.tradeType) {
+        inputs.tradeType.value = "매매";
+      }
+      clearSuggestions();
+      rpStatusEl.textContent = "자동입력 완료 (매매가·주소·상품구분 반영)";
+      // 면적도 참고용으로 입력
+      if (it.excluUseAr) {
+        inputs.areaOver85.value = Number(it.excluUseAr) > 85 ? "true" : "false";
+      }
+    });
+    rpSuggestionsEl.appendChild(row);
+  });
+}
+
+async function handleSearchDeals() {
+  const apt = rpAptEl.value.trim();
+    const dealYmd = (rpDealYmdEl ? rpDealYmdEl.value : "").trim();
+  if (!apt) {
+    rpStatusEl.textContent = "아파트명을 입력하세요";
+    return;
+  }
+    if (!RP || !RP.findSuggestionsByName) {
+      rpStatusEl.textContent = "실거래가 모듈이 로드되지 않았습니다";
+      return;
+    }
+  try {
+    rpStatusEl.textContent = "검색 중...";
+    clearSuggestions();
+      const list = await RP.findSuggestionsByName({ aptName: apt, months: 1, maxResults: 10, dealYmd: dealYmd || undefined });
+    renderSuggestions(list);
+    rpStatusEl.textContent = list.length ? "결과를 클릭해 자동 입력" : "검색 결과 없음";
+  } catch (e) {
+    rpStatusEl.textContent = `에러: ${e.message || e}`;
+    console.error(e);
+  }
+}
+
+if (rpSearchBtn) {
+  rpSearchBtn.addEventListener("click", handleSearchDeals);
+}
+
 function readForm() {
   return {
     price: commaFields.includes("price") ? parseNumberField(inputs.price) : Number(inputs.price.value || 0),
@@ -342,6 +431,15 @@ function formatKRW(n) {
 }
 
 function renderResult(r) {
+  const ruralLine = r.taxes.ruralTax > 0
+    ? `<div class="result-row"><span>· 농특세</span><span>${formatKRW(r.taxes.ruralTax)}</span></div>`
+    : "";
+  const monthlyLine = r.canPurchase
+    ? `<div class="result-row"><span>월 상환액</span><strong>${formatKRW(r.monthlyPayment)}</strong></div>`
+    : "";
+  const shortageLine = r.shortage > 0
+    ? `<div class="result-row"><span>부족 (추가 필요 자금)</span><strong>-${formatKRW(r.shortage)}</strong></div>`
+    : "";
   resultsEl.innerHTML = `
     <div class="result-row"><span>대출한도 (min LTV/DSR)</span><strong>${formatKRW(r.loanLimit)}</strong></div>
     <div class="result-row"><span>· LTV 한도</span><span>${formatKRW(r.ltvLimit)}</span></div>
@@ -349,17 +447,19 @@ function renderResult(r) {
     <hr />
     <div class="result-row"><span>취득세 합계</span><strong>${formatKRW(r.taxes.total)}</strong></div>
     <div class="result-row"><span>· 취득세</span><span>${formatKRW(r.taxes.acquisitionTax)}</span></div>
-    <div class="result-row"><span>· 농특세</span><span>${formatKRW(r.taxes.ruralTax)}</span></div>
+    ${ruralLine}
     <div class="result-row"><span>· 교육세</span><span>${formatKRW(r.taxes.educationTax)}</span></div>
     <div class="result-row"><span>중개보수</span><span>${formatKRW(r.brokerage)}</span></div>
-    <div class="result-row"><span>채권</span><span>${formatKRW(r.bond)}</span></div>
     <div class="result-row"><span>기타비용</span><span>${formatKRW(r.otherMisc)}</span></div>
     <div class="result-row"><span>세금+비용 합계</span><strong>${formatKRW(r.totalAcquisition)}</strong></div>
     <hr />
-    <div class="result-row"><span>필요 자금 (매매가-대출)</span><strong>${formatKRW(r.neededCash)}</strong></div>
+    <div class="result-row"><span>필요 자금 (매매가+세금비용-대출)</span><strong>${formatKRW(r.neededCash)}</strong></div>
     <div class="result-row"><span>보유 자산</span><span>${formatKRW(r.equity)}</span></div>
-    <div class="result-row"><span>부족(+)/여유(-)</span><strong>${formatKRW(r.shortage)}</strong></div>
-    <div class="result-row"><span>월 상환액</span><strong>${formatKRW(r.monthlyPayment)}</strong></div>
+    ${shortageLine}
+    ${monthlyLine}
+    <hr />
+    <div class="result-row"><span>매입 가능 여부</span><strong>${r.canPurchase ? "가능" : "불가능"}</strong></div>
+    <div class="result-row"><span>부족 시 소요 기간(연)</span><span>${r.yearsToSave}</span></div>
   `;
 }
 
@@ -384,12 +484,12 @@ function runCalc() {
 
 document.getElementById("calc-btn").addEventListener("click", runCalc);
 
-// 기본값 세팅
-inputs.price.value = "700000000";
-inputs.incomeAnnual.value = "60000000";
-inputs.equity.value = "200000000";
-inputs.address.value = "서울시 강남구";
-inputs.homeCount.value = "1";
+// 초기 값은 비워두고 사용자가 직접 입력하도록 함
+inputs.price.value = "";
+inputs.incomeAnnual.value = "";
+inputs.equity.value = "";
+inputs.address.value = "";
+inputs.homeCount.value = "";
 inputs.lifeFirst.value = "false";
 inputs.areaOver85.value = "false";
 inputs.productType.value = "아파트";
@@ -397,10 +497,3 @@ inputs.tradeType.value = "매매";
 inputs.years.value = "30";
 inputs.rate.value = "4.00";
 inputs.repaymentType.value = "원리금균등";
-
-// 초기 계산
-formatNumberField(inputs.price);
-formatNumberField(inputs.incomeAnnual);
-formatNumberField(inputs.equity);
-formatPercentField(inputs.rate);
-runCalc();
