@@ -212,7 +212,7 @@ function computeFormResult(form) {
   const rate = form.rate ?? DSR_DEFAULTS.baseInterest;
   const years = form.years ?? DSR_DEFAULTS.defaultYears;
   const monthlyPayment = computeMonthlyPayment(loanLimit, rate, years, repaymentType);
-  return { loanLimit, ltvLimit, dsrLimit: dsr.limit, monthlyPayment, taxes, brokerage, bond, otherMisc, totalAcquisition, neededCash, shortage };
+  return { loanLimit, ltvLimit, dsrLimit: dsr.limit, monthlyPayment, taxes, brokerage, bond, otherMisc, totalAcquisition, neededCash, shortage, equity: form.equity };
 }
 
 // ----- UI -----
@@ -221,6 +221,7 @@ const resultsEl = document.getElementById("results");
 const errorEl = document.getElementById("error");
 
 const commaFields = ["price", "incomeAnnual", "equity"];
+const percentFields = ["rate"]; // 입력을 % 단위로 받고 내부 계산은 소수로 변환
 
 const fields = [
   { key: "price", label: "매매가 (원)", type: "text", placeholder: "700,000,000" },
@@ -233,7 +234,7 @@ const fields = [
   { key: "productType", label: "상품구분", type: "select", options: ["아파트", "오피스텔", "기타"] },
   { key: "tradeType", label: "거래유형", type: "select", options: ["매매", "임대차"] },
   { key: "years", label: "대출 만기 (년)", type: "number", placeholder: "30" },
-  { key: "rate", label: "금리 (연, 소수)", type: "number", step: "0.001", placeholder: "0.04" },
+  { key: "rate", label: "금리 (연, %)", type: "text", placeholder: "4.00" },
   { key: "repaymentType", label: "상환방식", type: "select", options: ["원리금균등", "원금균등", "원금만기일시상환"] },
 ];
 
@@ -251,6 +252,22 @@ function formatNumberField(el) {
     el.value = "";
   } else {
     el.value = n.toLocaleString("ko-KR");
+  }
+  return n;
+}
+
+function parsePercentField(el) {
+  const raw = (el.value || "").toString().replace(/,/g, "").replace(/%/g, "").trim();
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatPercentField(el) {
+  const n = parsePercentField(el);
+  if (!el.value) {
+    el.value = "";
+  } else {
+    el.value = n.toFixed(2);
   }
   return n;
 }
@@ -292,6 +309,14 @@ fields.forEach((f) => {
     });
     el.addEventListener("blur", () => formatNumberField(el));
   }
+
+  if (percentFields.includes(f.key)) {
+    el.addEventListener("input", () => {
+      const val = el.value.replace(/[^0-9.]/g, "");
+      el.value = val;
+    });
+    el.addEventListener("blur", () => formatPercentField(el));
+  }
 });
 
 function readForm() {
@@ -306,7 +331,7 @@ function readForm() {
     productType: inputs.productType.value || "아파트",
     tradeType: inputs.tradeType.value || "매매",
     years: inputs.years.value ? Number(inputs.years.value) : undefined,
-    rate: inputs.rate.value ? Number(inputs.rate.value) : undefined,
+    rate: percentFields.includes("rate") ? parsePercentField(inputs.rate) / 100 : (inputs.rate.value ? Number(inputs.rate.value) : undefined),
     repaymentType: inputs.repaymentType.value || undefined,
   };
 }
@@ -332,7 +357,7 @@ function renderResult(r) {
     <div class="result-row"><span>세금+비용 합계</span><strong>${formatKRW(r.totalAcquisition)}</strong></div>
     <hr />
     <div class="result-row"><span>필요 자금 (매매가-대출)</span><strong>${formatKRW(r.neededCash)}</strong></div>
-    <div class="result-row"><span>보유 자산</span><span>${formatKRW(Number(inputs.equity.value || 0))}</span></div>
+    <div class="result-row"><span>보유 자산</span><span>${formatKRW(r.equity)}</span></div>
     <div class="result-row"><span>부족(+)/여유(-)</span><strong>${formatKRW(r.shortage)}</strong></div>
     <div class="result-row"><span>월 상환액</span><strong>${formatKRW(r.monthlyPayment)}</strong></div>
   `;
@@ -370,11 +395,12 @@ inputs.areaOver85.value = "false";
 inputs.productType.value = "아파트";
 inputs.tradeType.value = "매매";
 inputs.years.value = "30";
-inputs.rate.value = "0.04";
+inputs.rate.value = "4.00";
 inputs.repaymentType.value = "원리금균등";
 
 // 초기 계산
 formatNumberField(inputs.price);
 formatNumberField(inputs.incomeAnnual);
 formatNumberField(inputs.equity);
+formatPercentField(inputs.rate);
 runCalc();
