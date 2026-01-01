@@ -279,7 +279,7 @@ let mapCtx = {
   clusterDropdown: null,
   evalHooked: false,
 };
-const MAX_MARKERS_FOR_EVAL = 10;
+const MAX_MARKERS_FOR_EVAL = 20;
 const SCORE_CACHE_TTL = 5 * 60 * 1000;
 const aptScoreCache = new Map();
 let evaluateTimer = null;
@@ -554,10 +554,18 @@ async function evaluateVisibleMarkers() {
   const bounds = ctx.map.getBounds();
   const visible = ctx.baseMarkers.filter((m) => bounds.contain(m.getPosition()));
   if (!visible.length) return;
-  if (visible.length > MAX_MARKERS_FOR_EVAL) {
-    visible.forEach((m) => setMarkerColor(m, "orange"));
-    setMapStatus(`지도 확대 시 10개 이하에서 실시간 평가 (현재 ${visible.length}개)`);
-    return;
+
+  // 축척이 충분히 좁아졌다면 최대 MAX_MARKERS_FOR_EVAL개까지만 중심에 가까운 순서로 평가
+  const center = ctx.map.getCenter();
+  const sorted = visible
+    .map((m) => ({ m, dist: kakao.maps.geometry.spherical.computeDistanceBetween(center, m.getPosition()) }))
+    .sort((a, b) => a.dist - b.dist)
+    .slice(0, MAX_MARKERS_FOR_EVAL)
+    .map((v) => v.m);
+  if (!sorted.length) return;
+  const skipped = Math.max(0, visible.length - sorted.length);
+  if (skipped > 0) {
+    setMapStatus(`가까운 ${sorted.length}개만 우선 평가 중 (총 ${visible.length}개 보임)`);
   }
   evaluating = true;
   const baseForm = readForm();
@@ -566,7 +574,7 @@ async function evaluateVisibleMarkers() {
   let failCount = 0;
   try {
     await Promise.all(
-      visible.map((marker) =>
+      sorted.map((marker) =>
         limit(async () => {
           try {
             const score = await computeMarkerScore(marker, baseForm);
