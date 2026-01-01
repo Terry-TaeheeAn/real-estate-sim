@@ -3,51 +3,35 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>부동산뚝딱 - 내가 살 수 있는 아파트는 뭘까</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <title>주택 매입 계산기 (MVP 시뮬레이터)</title>
   <style>
     :root {
-      font-family: 'Space Grotesk', 'Segoe UI', sans-serif;
+      font-family: 'Segoe UI', sans-serif;
       color: #0f172a;
-      background: radial-gradient(circle at 10% 20%, #fff3e6 0, #f8fafc 45%, #eef2ff 100%);
-      --card-bg: rgba(255, 255, 255, 0.9);
-      --card-border: rgba(226, 232, 240, 0.9);
-      --shadow: 0 12px 35px rgba(15, 23, 42, 0.12);
-      --primary: #ff7a1a;
-      --primary-dark: #d65a00;
-      --primary-muted: #ffe0c2;
-      --text-muted: #475569;
+      background: #f8fafc;
     }
-    body { margin: 0; padding: 20px; }
-    h1 { margin: 0 0 10px; letter-spacing: -0.02em; }
-    .layout { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 18px; align-items: start; }
-    .card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 16px; padding: 18px; box-shadow: var(--shadow); backdrop-filter: blur(6px); }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
-    label { font-size: 12px; color: var(--text-muted); }
-    input, select { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 14px; box-sizing: border-box; background: #fff; transition: border-color 0.2s ease, box-shadow 0.2s ease; }
-    input:focus, select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(255, 122, 26, 0.2); }
-    button { padding: 11px 16px; border: none; border-radius: 10px; background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: #fff; cursor: pointer; font-size: 14px; font-weight: 600; box-shadow: 0 8px 20px rgba(255, 122, 26, 0.25); transition: transform 0.15s ease, box-shadow 0.2s ease; }
-    button:hover { transform: translateY(-1px); box-shadow: 0 10px 26px rgba(255, 122, 26, 0.3); }
-    button:disabled { background: #f0b792; cursor: not-allowed; box-shadow: none; transform: none; }
-    .result-row { display: flex; justify-content: space-between; margin: 5px 0; font-size: 14px; }
+    body { margin: 0; padding: 16px; }
+    h1 { margin: 0 0 12px; }
+    .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+    .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+    label { font-size: 12px; color: #475569; }
+    input, select { width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
+    button { padding: 10px 14px; border: none; border-radius: 8px; background: #ff7a1a; color: #fff; cursor: pointer; font-size: 14px; }
+    button:disabled { background: #f0b792; cursor: not-allowed; }
+    .result-row { display: flex; justify-content: space-between; margin: 4px 0; font-size: 14px; }
     .result-row strong { color: #0f172a; }
-    .badge { display: inline-block; padding: 2px 6px; background: var(--primary-muted); color: var(--primary-dark); border-radius: 6px; font-size: 12px; margin-left: 6px; font-weight: 600; }
+    .badge { display: inline-block; padding: 2px 6px; background: #e2e8f0; border-radius: 6px; font-size: 12px; margin-left: 6px; }
   </style>
 </head>
 <body>
-  <h1>부동산뚝딱 - 내가 살 수 있는 아파트는 뭘까</h1>
+  <h1>주택 매입 계산기 (1시트 MVP)</h1>
   <p style="margin-top:0;color:#475569;font-size:13px;">지도에서 단지를 선택하면 아파트명이 입력됩니다. (서울 주소는 임시로 투기/조정 적용)</p>
-
   <div class="card" style="margin-bottom:16px;">
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-      <h3 style="margin:0;">지도</h3>
-      <span class="badge">STEP 1</span>
-    </div>
-    <div id="map" style="width:100%; height:420px; border:1px solid #e2e8f0; border-radius:14px;"></div>
-    <div id="map-status" style="font-size:12px; color:#475569; margin-top:6px;">지도 로드 준비 중...</div>
-    <div style="font-size:12px; color:#0f172a; margin-top:8px; line-height:1.6; background:#fff7ed; border:1px solid #fed7aa; border-radius:10px; padding:10px 12px;">
+    <h3>지도</h3>
+    <div id="map" style="width:100%; height:420px; border:1px solid #e2e8f0; border-radius:10px;"></div>
+    <div id="map-status" style="font-size:12px; color:#475569; margin-top:6px;">캐시된 단지를 불러오는 중...</div>
+    <div style="font-size:12px; color:#0f172a; margin-top:6px; line-height:1.5; background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; padding:8px 10px;">
       사용법: ① 입력 탭에서 매매가·주소·면적·상품구분은 자동 입력용이니 나머지 필드만 입력하세요. ② 지도에서 원하는 아파트를 클릭하거나 상단 "실거래가 불러오기"에 아파트명을 입력해 자동입력합니다. ③ "계산하기"를 눌러 결과를 확인하세요.
     </div>
   </div>
@@ -83,14 +67,9 @@
     </div>
   </div>
     <script>
-      // 배포 환경(github.io)에서는 localhost 호출을 막아 캐시 없는 모드로 동작
-      const isGithub = /github\.io$/.test(location.hostname);
-      window.REALPRICE_PROXY_URL = isGithub ? "" : "http://localhost:5001/api/rtms";
-      window.REALPRICE_CACHE_URL = isGithub ? "" : "http://localhost:5001/api/cache/suggestions";
-      if (isGithub) {
-        const mapStatusEl = document.getElementById('map-status');
-        if (mapStatusEl) mapStatusEl.textContent = '캐시 서버 미연결: 지도만 표시됩니다.';
-      }
+      // 캐시 전용 테스트: 실시간 RTMS 호출은 비활성화, 캐시 엔드포인트만 사용
+      window.REALPRICE_PROXY_URL = "";
+      window.REALPRICE_CACHE_URL = "http://localhost:5001/api/cache/suggestions";
     </script>
     <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=41f6f0031d7afb62cf6dadc629a3260d&autoload=false&libraries=services,clusterer,geometry"></script>
     <script src="./realprice-fetch.js"></script>
@@ -125,7 +104,7 @@
         }
       });
 
-        RealPrice.setProxyUrl(window.REALPRICE_PROXY_URL || "");
+        RealPrice.setProxyUrl("");
     </script>
 </body>
 </html>
