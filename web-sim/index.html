@@ -46,7 +46,7 @@
       <span class="badge">STEP 1</span>
     </div>
     <div id="map" style="width:100%; height:420px; border:1px solid #e2e8f0; border-radius:14px;"></div>
-    <div id="map-status" style="font-size:12px; color:#475569; margin-top:6px;">캐시된 단지를 불러오는 중...</div>
+    <div id="map-status" style="font-size:12px; color:#475569; margin-top:6px;">지도 로드 준비 중...</div>
     <div style="font-size:12px; color:#0f172a; margin-top:8px; line-height:1.6; background:#fff7ed; border:1px solid #fed7aa; border-radius:10px; padding:10px 12px;">
       사용법: ① 입력 탭에서 매매가·주소·면적·상품구분은 자동 입력용이니 나머지 필드만 입력하세요. ② 지도에서 원하는 아파트를 클릭하거나 상단 "실거래가 불러오기"에 아파트명을 입력해 자동입력합니다. ③ "계산하기"를 눌러 결과를 확인하세요.
     </div>
@@ -83,9 +83,14 @@
     </div>
   </div>
     <script>
-      // 캐시 전용 테스트: 실시간 RTMS 호출은 비활성화, 캐시 엔드포인트만 사용
-      window.REALPRICE_PROXY_URL = "";
-      window.REALPRICE_CACHE_URL = "http://localhost:5001/api/cache/suggestions";
+      // 배포 환경(github.io)에서는 localhost 호출을 막아 캐시 없는 모드로 동작
+      const isGithub = /github\.io$/.test(location.hostname);
+      window.REALPRICE_PROXY_URL = isGithub ? "" : "http://localhost:5001/api/rtms";
+      window.REALPRICE_CACHE_URL = isGithub ? "" : "http://localhost:5001/api/cache/suggestions";
+      if (isGithub) {
+        const mapStatusEl = document.getElementById('map-status');
+        if (mapStatusEl) mapStatusEl.textContent = '캐시 서버 미연결: 지도만 표시됩니다.';
+      }
     </script>
     <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=41f6f0031d7afb62cf6dadc629a3260d&autoload=false&libraries=services,clusterer,geometry"></script>
     <script src="./realprice-fetch.js"></script>
@@ -120,7 +125,7 @@
         }
       });
 
-        RealPrice.setProxyUrl("");
+        RealPrice.setProxyUrl(window.REALPRICE_PROXY_URL || "");
     </script>
 </body>
 </html>
