@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>주택 매입 계산기 (MVP 시뮬레이터)</title>
+  <title>🏠 부동산뚝딱 - 내가 살 수 있는 아파트는 뭘까</title>
   <style>
     :root {
       font-family: 'Segoe UI', sans-serif;
@@ -25,7 +25,7 @@
   </style>
 </head>
 <body>
-  <h1>주택 매입 계산기 (1시트 MVP)</h1>
+  <h1 style="display:flex;align-items:center;gap:8px;">🏠 부동산뚝딱 <span style="font-size:16px; color:#ff7a1a;">내가 살 수 있는 아파트는 뭘까</span></h1>
   <p style="margin-top:0;color:#475569;font-size:13px;">지도에서 단지를 선택하면 아파트명이 입력됩니다. (서울 주소는 임시로 투기/조정 적용)</p>
   <div class="card" style="margin-bottom:16px;">
     <h3>지도</h3>
@@ -67,11 +67,16 @@
     </div>
   </div>
     <script>
-      // 캐시 전용 테스트: 실시간 RTMS 호출은 비활성화, 캐시 엔드포인트만 사용
-      window.REALPRICE_PROXY_URL = "";
-      window.REALPRICE_CACHE_URL = "http://localhost:5001/api/cache/suggestions";
+      // github.io에서는 혼합콘텐츠를 막기 위해 localhost 프록시/캐시 호출을 비활성화
+      const isGithub = /github\.io$/.test(location.hostname);
+      window.REALPRICE_PROXY_URL = isGithub ? "" : "http://localhost:5001/api/rtms";
+      window.REALPRICE_CACHE_URL = isGithub ? "" : "http://localhost:5001/api/cache/suggestions";
+      if (isGithub) {
+        const mapStatusEl = document.getElementById('map-status');
+        if (mapStatusEl) mapStatusEl.textContent = '캐시 서버 미연결: 지도만 표시됩니다.';
+      }
     </script>
-    <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=41f6f0031d7afb62cf6dadc629a3260d&autoload=false&libraries=services,clusterer,geometry"></script>
+    <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=41f6f0031d7afb62cf6dadc629a3260d&libraries=services,clusterer,geometry"></script>
     <script src="./realprice-fetch.js"></script>
     <script type="module" src="./sim.js"></script>
     <script>
@@ -104,7 +109,7 @@
         }
       });
 
-        RealPrice.setProxyUrl("");
+        RealPrice.setProxyUrl(window.REALPRICE_PROXY_URL || "");
     </script>
 </body>
 </html>
