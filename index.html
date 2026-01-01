@@ -1,89 +1,22 @@
 <!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>주택 매입 계산기 (MVP 시뮬레이터)</title>
+  <title>Real Estate Sim</title>
+  <meta http-equiv="refresh" content="0; url=web-sim/" />
+  <link rel="canonical" href="web-sim/" />
   <style>
-    :root {
-      font-family: 'Segoe UI', sans-serif;
-      color: #0f172a;
-      background: #f8fafc;
-    }
-    body { margin: 0; padding: 16px; }
-    h1 { margin: 0 0 12px; }
-    .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
-    .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
-    label { font-size: 12px; color: #475569; }
-    input, select { width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
-    button { padding: 10px 14px; border: none; border-radius: 8px; background: #2563eb; color: #fff; cursor: pointer; font-size: 14px; }
-    button:disabled { background: #94a3b8; cursor: not-allowed; }
-    .result-row { display: flex; justify-content: space-between; margin: 4px 0; font-size: 14px; }
-    .result-row strong { color: #0f172a; }
-    .badge { display: inline-block; padding: 2px 6px; background: #e2e8f0; border-radius: 6px; font-size: 12px; margin-left: 6px; }
+    body { font-family: system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0f172a; color: #e2e8f0; }
+    .card { text-align: center; padding: 24px 32px; border-radius: 16px; background: #111827; box-shadow: 0 10px 30px rgba(0,0,0,0.25); }
+    a { color: #38bdf8; text-decoration: none; }
+    a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
-  <h1>주택 매입 계산기 (1시트 MVP)</h1>
-  <p style="margin-top:0;color:#475569;font-size:13px;">좌측 입력 후 "계산" 클릭 → 우측 결과가 갱신됩니다. (서울 주소는 임시로 투기/조정 적용)</p>
-  <div class="layout">
-    <div class="card">
-      <h3>입력</h3>
-      <div style="margin-bottom:12px; padding:10px; border:1px solid #e2e8f0; border-radius:8px; background:#f8fafc;">
-        <div style="font-size:13px; color:#334155; margin-bottom:6px; font-weight:600;">실거래가 불러오기 (먼저 검색 → 선택하면 자동입력)</div>
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px 10px; align-items:center;">
-          <input id="rp-apt" type="text" placeholder="아파트명 예: 래미안" style="padding:8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;" />
-          <input id="rp-dealymd" type="text" placeholder="YYYYMM (예: 202506)" style="padding:8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;" />
-        </div>
-        <div style="display:flex; align-items:center; gap:8px; margin-top:8px;">
-          <button id="rp-search" style="padding:8px 12px; border:none; border-radius:6px; background:#0ea5e9; color:white; font-size:13px;">검색</button>
-          <span id="rp-status" style="font-size:12px; color:#0f172a;"></span>
-        </div>
-        <div id="rp-suggestions" style="margin-top:8px; max-height:150px; overflow:auto; border:1px solid #e2e8f0; border-radius:6px; padding:6px; font-size:13px; background:white;"></div>
-      </div>
-      <div class="grid" id="form-grid"></div>
-      <div style="margin-top:12px; display:flex; gap:8px;">
-        <button id="calc-btn">계산하기</button>
-        <span id="error" style="color:#dc2626; font-size:13px;"></span>
-      </div>
-    </div>
-    <div class="card">
-      <h3>결과</h3>
-      <div id="results"></div>
-    </div>
+  <div class="card">
+    <div>Loading the simulator…</div>
+    <div style="margin-top:12px;"><a href="web-sim/">Continue to /web-sim/</a></div>
   </div>
-    <script>
-      window.REALPRICE_PROXY_URL = "http://localhost:5001/api/rtms";
-      window.REALPRICE_CACHE_URL = "http://localhost:5001/api/cache/suggestions";
-    </script>
-    <script src="./realprice-fetch.js"></script>
-    <script type="module" src="./sim.js"></script>
-    <script>
-      // 서비스 키가 필요한지 여부를 확인하는 함수
-      async function checkServiceKeyNeeded() {
-        const base = (window.REALPRICE_PROXY_URL || "").replace(/\/api\/rtms$/, "");
-        const healthUrl = base ? `${base}/health` : "/health";
-        const response = await fetch(healthUrl);
-        const data = await response.json();
-        return data.serviceKeyNeeded === true;
-      }
-
-      // 페이지 로드 시 실행
-      window.addEventListener('load', async () => {
-        const statusDiv = document.getElementById('rp-status');
-        const serviceKeyNeeded = await checkServiceKeyNeeded();
-
-        if (serviceKeyNeeded) {
-          statusDiv.textContent = '서비스 키가 필요합니다. 관리자에게 문의하세요.';
-          statusDiv.style.color = '#dc2626';
-        } else {
-          statusDiv.textContent = '서비스 준비 완료.';
-          statusDiv.style.color = '#4caf50';
-        }
-      });
-
-      RealPrice.setProxyUrl("http://localhost:5001/api/rtms");
-    </script>
 </body>
 </html>
