@@ -500,6 +500,17 @@ function setMarkerColor(marker, color) {
   marker.setImage(markerImage(color));
 }
 
+function distanceBetween(a, b) {
+  if (!a || !b) return Infinity;
+  if (kakao?.maps?.geometry?.spherical?.computeDistanceBetween) {
+    return kakao.maps.geometry.spherical.computeDistanceBetween(a, b);
+  }
+  // fallback: approximate using simple Pythagoras on lat/lng degrees
+  const dx = a.getLat() - b.getLat();
+  const dy = a.getLng() - b.getLng();
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
 function colorMarkerByScore(marker, score) {
   if (!marker) return;
   if (score && score.ok) {
@@ -558,7 +569,7 @@ async function evaluateVisibleMarkers() {
   // 축척이 충분히 좁아졌다면 최대 MAX_MARKERS_FOR_EVAL개까지만 중심에 가까운 순서로 평가
   const center = ctx.map.getCenter();
   const sorted = visible
-    .map((m) => ({ m, dist: kakao.maps.geometry.spherical.computeDistanceBetween(center, m.getPosition()) }))
+    .map((m) => ({ m, dist: distanceBetween(center, m.getPosition()) }))
     .sort((a, b) => a.dist - b.dist)
     .slice(0, MAX_MARKERS_FOR_EVAL)
     .map((v) => v.m);
