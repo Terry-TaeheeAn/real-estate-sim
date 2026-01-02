@@ -241,13 +241,17 @@ function computeFormResult(form) {
 }
 
 // ----- UI -----
-const formGrid = document.getElementById("form-grid");
+const mainGrid = document.getElementById("form-grid-main");
+const autoGrid = document.getElementById("form-grid-auto");
 const resultsEl = document.getElementById("results");
 const errorEl = document.getElementById("error");
 const mapStatusEl = document.getElementById("map-status");
 
 const commaFields = ["price", "incomeAnnual", "equity"];
 const percentFields = ["rate"]; // 입력을 % 단위로 받고 내부 계산은 소수로 변환
+
+const MAIN_FIELD_KEYS = new Set(["equity", "incomeAnnual", "homeCount", "lifeFirst", "productType", "tradeType", "years", "rate", "repaymentType"]);
+const AUTO_FIELD_KEYS = new Set(["price", "address", "areaOver85"]);
 
 const fields = [
   { key: "price", label: "매매가 (원)", type: "text" },
@@ -349,7 +353,7 @@ function initKakaoMap() {
   return mapReadyPromise;
 }
 
-async function showAddressOnMap(address) {
+async function showAddressOnMap(address, opts = {}) {
   const ctx = await initKakaoMap();
   if (!ctx || !address) return;
   const clean = address.trim();
@@ -362,8 +366,12 @@ async function showAddressOnMap(address) {
     const { x, y } = results[0];
     const latlng = new kakao.maps.LatLng(Number(y), Number(x));
     ctx.map.setCenter(latlng);
-    ctx.marker.setPosition(latlng);
+    if (opts.showMarker !== false) {
+      ctx.marker.setPosition(latlng);
       ctx.marker.setMap(ctx.map);
+    } else {
+      ctx.marker.setMap(null);
+    }
     setMapStatus("지도에 위치가 표시되었습니다.");
   });
 }
@@ -794,7 +802,8 @@ fields.forEach((f) => {
   el.id = f.key;
   el.style.marginTop = "4px";
   wrap.appendChild(el);
-  formGrid.appendChild(wrap);
+  const targetGrid = AUTO_FIELD_KEYS.has(f.key) ? autoGrid : mainGrid;
+  if (targetGrid) targetGrid.appendChild(wrap);
   inputs[f.key] = el;
 
   if (commaFields.includes(f.key)) {
@@ -872,7 +881,8 @@ function renderSuggestions(list) {
         if (addr) {
           inputs.address.value = addr;
       }
-      showAddressOnMap(addr);
+      // 지도 핀을 이미 클릭한 상태에서 중복 마커가 겹치지 않도록 기본 마커는 숨기고 중심만 맞춤
+      showAddressOnMap(addr, { showMarker: false });
       // 실거래가 API는 아파트 매매 기준 → 상품구분/거래유형을 자동 설정
       if (inputs.productType) {
         inputs.productType.value = "아파트";

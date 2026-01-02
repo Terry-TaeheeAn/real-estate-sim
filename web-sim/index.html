@@ -22,48 +22,64 @@
     .result-row { display: flex; justify-content: space-between; margin: 4px 0; font-size: 14px; }
     .result-row strong { color: #0f172a; }
     .badge { display: inline-block; padding: 2px 6px; background: #e2e8f0; border-radius: 6px; font-size: 12px; margin-left: 6px; }
+
+    /* 모바일(세로) 최적화: 한 컬럼 스택, 터치 여백 확대 */
+    @media (max-width: 768px) {
+      body { padding: 12px; }
+      h1 { font-size: 20px; line-height: 1.2; }
+      .layout { grid-template-columns: 1fr; gap: 12px; }
+      .grid { grid-template-columns: 1fr; }
+      #map { height: 360px; }
+      input, select, button { font-size: 15px; padding: 10px 12px; }
+      #rp-suggestions { max-height: 200px; }
+    }
   </style>
 </head>
 <body>
   <h1 style="display:flex;align-items:center;gap:8px;">🏠 부동산뚝딱 <span style="font-size:16px; color:#ff7a1a;">내가 살 수 있는 아파트는 뭘까</span></h1>
   <p style="margin-top:0;color:#475569;font-size:13px;">지도에서 단지를 선택하면 아파트명이 입력됩니다. (서울 주소는 임시로 투기/조정 적용)</p>
-  <div class="card" style="margin-bottom:16px;">
+  <div class="card" style="margin-bottom:12px;">
+    <h3>입력 (기본)</h3>
+    <div class="grid" id="form-grid-main"></div>
+  </div>
+
+  <div class="card" style="margin-bottom:12px;">
     <h3>지도</h3>
     <div id="map" style="width:100%; height:420px; border:1px solid #e2e8f0; border-radius:10px;"></div>
     <div id="map-status" style="font-size:12px; color:#475569; margin-top:6px;">캐시된 단지를 불러오는 중...</div>
     <div style="font-size:12px; color:#0f172a; margin-top:6px; line-height:1.5; background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; padding:8px 10px;">
-      사용법: ① 입력 탭에서 매매가·주소·면적·상품구분은 자동 입력용이니 나머지 필드만 입력하세요. ② 지도에서 원하는 아파트를 클릭하거나 상단 "실거래가 불러오기"에 아파트명을 입력해 자동입력합니다. ③ "계산하기"를 눌러 결과를 확인하세요.
+      사용법: ① 기본 입력(소득·자산·대출 조건)을 채우세요. ② 지도에서 단지를 클릭하거나 아래 "실거래가 불러오기"에 이름을 입력해 드롭다운에서 한 건을 선택하세요. ③ 가격·주소가 자동 입력된 것을 확인하고 "계산하기"를 눌러 결과를 봅니다.
     </div>
   </div>
 
-  <div class="layout">
-    <div class="card">
-      <h3>입력</h3>
-      <div style="margin-bottom:12px; padding:10px; border:1px solid #e2e8f0; border-radius:8px; background:#f8fafc;">
-        <div style="font-size:13px; color:#334155; margin-bottom:6px; font-weight:600;">실거래가 불러오기 (지도 클릭 → 자동입력 후 검색)</div>
-        <div style="display:grid; grid-template-columns: 1fr; gap:8px 10px; align-items:center;">
-          <input id="rp-apt" type="text" placeholder="아파트명 예: 래미안" style="padding:8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;" />
-        </div>
-        <div style="display:flex; align-items:center; gap:8px; margin-top:8px;">
-          <button id="rp-search" style="padding:8px 12px; border:none; border-radius:6px; background:#ff7a1a; color:white; font-size:13px;">검색</button>
-          <span id="rp-status" style="font-size:12px; color:#0f172a;"></span>
-        </div>
-        <div id="rp-suggestions" style="margin-top:8px; max-height:150px; overflow:auto; border:1px solid #e2e8f0; border-radius:6px; padding:6px; font-size:13px; background:white;"></div>
-      </div>
-      <div class="grid" id="form-grid"></div>
-      <div style="margin-top:12px; display:flex; gap:8px;">
-        <button id="calc-btn">계산하기</button>
-        <span id="error" style="color:#dc2626; font-size:13px;"></span>
-      </div>
+  <div class="card" style="margin-bottom:12px;">
+    <h3>실거래가 불러오기</h3>
+    <div style="display:grid; grid-template-columns: 1fr; gap:8px 10px; align-items:center;">
+      <input id="rp-apt" type="text" placeholder="아파트명 예: 래미안" style="padding:8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;" />
     </div>
-    <div class="card">
-      <h3>결과</h3>
-      <div id="results"></div>
-      <div style="margin-top:12px; font-size:12px; color:#475569; line-height:1.6; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:8px 10px;">
-        <div>1) 실거래가 기준</div>
-        <div>2) 단순 참고용</div>
-        <div>3) 모든 저작권은 부뚝딱(부동산뚝딱)에게 있음 — 투자 문의: <a href="mailto:peter9596@gmail.com" style="color:#d65a00;">peter9596@gmail.com</a></div>
-      </div>
+    <div style="display:flex; align-items:center; gap:8px; margin-top:8px;">
+      <button id="rp-search" style="padding:8px 12px; border:none; border-radius:6px; background:#ff7a1a; color:white; font-size:13px;">검색</button>
+      <span id="rp-status" style="font-size:12px; color:#0f172a;"></span>
+    </div>
+    <div id="rp-suggestions" style="margin-top:8px; max-height:180px; overflow:auto; border:1px solid #e2e8f0; border-radius:6px; padding:6px; font-size:13px; background:white;"></div>
+  </div>
+
+  <div class="card" style="margin-bottom:12px;">
+    <h3>가격 · 주소 입력</h3>
+    <div class="grid" id="form-grid-auto"></div>
+    <div style="margin-top:12px; display:flex; gap:8px;">
+      <button id="calc-btn">계산하기</button>
+      <span id="error" style="color:#dc2626; font-size:13px;"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>결과</h3>
+    <div id="results"></div>
+    <div style="margin-top:12px; font-size:12px; color:#475569; line-height:1.6; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:8px 10px;">
+      <div>1) 실거래가 기준</div>
+      <div>2) 단순 참고용</div>
+      <div>3) 모든 저작권은 부뚝딱(부동산뚝딱)에게 있음 — 투자 문의: <a href="mailto:peter9596@gmail.com" style="color:#d65a00;">peter9596@gmail.com</a></div>
     </div>
   </div>
     <script>
