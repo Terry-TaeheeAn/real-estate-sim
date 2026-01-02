@@ -456,7 +456,15 @@ async function fetchAllPoints() {
   if (STATIC_POINTS_URL) {
     try {
       const res = await fetch(STATIC_POINTS_URL, { cache: "no-cache" });
-      if (res.ok) return res.json();
+      if (res.ok) {
+        const txt = await res.text();
+        try {
+          return JSON.parse(txt);
+        } catch (parseErr) {
+          console.error("static points json parse failed", parseErr, txt.slice(0, 200));
+          throw parseErr;
+        }
+      }
     } catch (e) {
       console.warn("static points fetch failed", e);
     }

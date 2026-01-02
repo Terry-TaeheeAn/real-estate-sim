@@ -135,7 +135,14 @@ async function loadStaticSuggestions() {
     try {
       const res = await fetch(STATIC_SUGGESTIONS_URL, { cache: "no-cache" });
       if (!res.ok) return [];
-      const data = await res.json();
+      const txt = await res.text();
+      let data;
+      try {
+        data = JSON.parse(txt);
+      } catch (parseErr) {
+        console.error("static suggestions json parse failed", parseErr, txt.slice(0, 200));
+        return [];
+      }
       return Array.isArray(data) ? data : [];
     } catch (e) {
       console.warn("static suggestions fetch failed", e);
