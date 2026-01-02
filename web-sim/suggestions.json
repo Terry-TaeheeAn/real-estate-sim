@@ -6,7 +6,6 @@
 	{ "aptNm": "헬리오시티", "dealAmount": "1,980,000", "dealYmd": "20241107", "excluUseAr": "84.97", "floor": "17", "lawdCd": "11710", "umdNm": "가락동", "jibun": "479" },
 	{ "aptNm": "마포래미안푸르지오", "dealAmount": "1,720,000", "dealYmd": "20241030", "excluUseAr": "84.99", "floor": "12", "lawdCd": "11440", "umdNm": "아현동", "jibun": "600" },
 	{ "aptNm": "송파파크하비오", "dealAmount": "1,050,000", "dealYmd": "20241118", "excluUseAr": "59.98", "floor": "10", "lawdCd": "11710", "umdNm": "문정동", "jibun": "628" },
-	{ "aptNm": "용산시티파크", "dealAmount": "1,950,000", "dealYmd": "20241102", "excluUseAr": "84.98", "floor": "19", "lawdCd": "11170", "umdNm": "한강로2가", "jibun": "191" },
-	{ "aptNm": "광장힐스테이트", "dealAmount": "1,180,000", "dealYmd": "20241025", "excluUseAr": "84.91", "floor": "11", "lawdCd": "11215", "umdNm": "광장동", "jibun": "238" },
-	{ "aptNm": "목동신시가지7단지", "dealAmount": "1,320,000", "dealYmd": "20241018", "excluUseAr": "84.8", "floor": "13", "lawdCd": "11470", "umdNm": "목동", "jibun": "923" }
+	{ "aptNm": "래미안대치팰리스", "dealAmount": "2,900,000", "dealYmd": "20241115", "excluUseAr": "84.99", "floor": "20", "lawdCd": "11680", "umdNm": "대치동", "jibun": "101-1" },
+	{ "aptNm": "자이개포", "dealAmount": "2,350,000", "dealYmd": "20241103", "excluUseAr": "84.98", "floor": "15", "lawdCd": "11680", "umdNm": "개포동", "jibun": "12" }
 ]
