@@ -253,6 +253,39 @@ const percentFields = ["rate"]; // 입력을 % 단위로 받고 내부 계산은
 const MAIN_FIELD_KEYS = new Set(["equity", "incomeAnnual", "homeCount", "lifeFirst", "productType", "tradeType", "years", "rate", "repaymentType"]);
 const AUTO_FIELD_KEYS = new Set(["price", "address", "areaOver85"]);
 
+// 정적 suggestions.json을 직접 읽어 필터링할 때 사용
+let staticSuggestionsLocal = null;
+
+function normalizeName(name) {
+  return (name || "")
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[()\[\]{}-]/g, "");
+}
+
+async function loadStaticSuggestionsLocal() {
+  if (staticSuggestionsLocal) return staticSuggestionsLocal;
+  if (!STATIC_SUGGESTIONS_URL) return [];
+  staticSuggestionsLocal = (async () => {
+    try {
+      const res = await fetch(STATIC_SUGGESTIONS_URL, { cache: "no-cache" });
+      if (!res.ok) return [];
+      const txt = await res.text();
+      try {
+        const data = JSON.parse(txt);
+        return Array.isArray(data) ? data : [];
+      } catch (e) {
+        console.warn("static suggestions parse failed", e, txt.slice(0, 200));
+        return [];
+      }
+    } catch (e) {
+      console.warn("static suggestions fetch failed", e);
+      return [];
+    }
+  })();
+  return staticSuggestionsLocal;
+}
+
 const fields = [
   { key: "price", label: "매매가 (원)", type: "text" },
   { key: "address", label: "주소", type: "text" },
@@ -574,6 +607,19 @@ async function fetchLatestDealFromCache(aptNm) {
       return deal;
     } catch (e) {
       console.warn("static suggestion lookup failed", e);
+    }
+  }
+
+  // 3) 최종 fallback: 직접 정적 JSON을 로드해 최신 거래를 찾음
+  if (STATIC_SUGGESTIONS_URL) {
+    const all = await loadStaticSuggestionsLocal();
+    if (all && all.length) {
+      const target = normalizeName(aptNm);
+      const filtered = all.filter((it) => normalizeName(it.aptNm).includes(target));
+      const sorted = filtered.sort((a, b) => (b.dealYmd || "").localeCompare(a.dealYmd || ""));
+      const deal = sorted[0] || null;
+      aptScoreCache.set(aptNm, { deal, ts: Date.now() });
+      return deal;
     }
   }
 
