@@ -549,16 +549,35 @@ function colorMarkerByScore(marker, score) {
 }
 
 async function fetchLatestDealFromCache(aptNm) {
-  if (!CACHE_BASE || !aptNm) return null;
+  if (!aptNm) return null;
   const cached = aptScoreCache.get(aptNm);
   if (cached && Date.now() - cached.ts < SCORE_CACHE_TTL) return cached.deal;
-  const url = `${CACHE_BASE}/api/cache/suggestions?apt=${encodeURIComponent(aptNm)}&months=6&max=1`;
-  const res = await fetch(url);
-  if (!res.ok) return null;
-  const list = await res.json();
-  const deal = list && list[0] ? list[0] : null;
-  aptScoreCache.set(aptNm, { deal, ts: Date.now() });
-  return deal;
+
+  // 1) 캐시 API가 있으면 우선 사용
+  if (CACHE_BASE) {
+    const url = `${CACHE_BASE}/api/cache/suggestions?apt=${encodeURIComponent(aptNm)}&months=6&max=1`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const list = await res.json();
+      const deal = list && list[0] ? list[0] : null;
+      aptScoreCache.set(aptNm, { deal, ts: Date.now() });
+      return deal;
+    }
+  }
+
+  // 2) GitHub 정적 모드: RP.findSuggestionsByName가 STATIC_SUGGESTIONS_URL을 읽어줌
+  if (STATIC_SUGGESTIONS_URL && RP && RP.findSuggestionsByName) {
+    try {
+      const list = await RP.findSuggestionsByName({ aptName: aptNm, months: 6, maxResults: 1 });
+      const deal = list && list[0] ? list[0] : null;
+      aptScoreCache.set(aptNm, { deal, ts: Date.now() });
+      return deal;
+    } catch (e) {
+      console.warn("static suggestion lookup failed", e);
+    }
+  }
+
+  return null;
 }
 
 async function computeMarkerScore(marker, baseForm) {
