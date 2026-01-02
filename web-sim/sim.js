@@ -241,8 +241,8 @@ function computeFormResult(form) {
 }
 
 // ----- UI -----
-const mainGrid = document.getElementById("form-grid-main");
-const autoGrid = document.getElementById("form-grid-auto");
+const mainGrid = typeof document !== "undefined" ? document.getElementById("form-grid-main") : null;
+const autoGrid = typeof document !== "undefined" ? document.getElementById("form-grid-auto") : null;
 const resultsEl = document.getElementById("results");
 const errorEl = document.getElementById("error");
 const mapStatusEl = document.getElementById("map-status");
@@ -803,7 +803,11 @@ fields.forEach((f) => {
   el.style.marginTop = "4px";
   wrap.appendChild(el);
   const targetGrid = AUTO_FIELD_KEYS.has(f.key) ? autoGrid : mainGrid;
-  if (targetGrid) targetGrid.appendChild(wrap);
+  if (targetGrid) {
+    targetGrid.appendChild(wrap);
+  } else {
+    console.warn("missing form grid for", f.key);
+  }
   inputs[f.key] = el;
 
   if (commaFields.includes(f.key)) {
