@@ -38,6 +38,12 @@
 <body>
   <h1 style="display:flex;align-items:center;gap:8px;">🏠 부동산뚝딱 <span style="font-size:16px; color:#ff7a1a;">내가 살 수 있는 아파트는 뭘까</span></h1>
   <p style="margin-top:0;color:#475569;font-size:13px;">지도에서 단지를 선택하면 아파트명이 입력됩니다. (서울 주소는 임시로 투기/조정 적용)</p>
+  <div class="card" style="margin-bottom:12px; background:#fff7ed; border-color:#fed7aa;">
+    <div style="font-size:12px; color:#0f172a; line-height:1.6;">
+      사용법: ① 기본 입력(소득·자산·대출 조건)을 채우세요. ② 지도에서 단지를 클릭하거나 아래 "실거래가 불러오기"에 이름을 입력해 드롭다운에서 한 건을 선택하세요. ③ 가격·주소가 자동 입력된 것을 확인하고 "계산하기"를 눌러 결과를 봅니다.
+    </div>
+  </div>
+
   <div class="card" style="margin-bottom:12px;">
     <h3>입력 (기본)</h3>
     <div class="grid" id="form-grid-main"></div>
@@ -47,9 +53,6 @@
     <h3>지도</h3>
     <div id="map" style="width:100%; height:420px; border:1px solid #e2e8f0; border-radius:10px;"></div>
     <div id="map-status" style="font-size:12px; color:#475569; margin-top:6px;">캐시된 단지를 불러오는 중...</div>
-    <div style="font-size:12px; color:#0f172a; margin-top:6px; line-height:1.5; background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; padding:8px 10px;">
-      사용법: ① 기본 입력(소득·자산·대출 조건)을 채우세요. ② 지도에서 단지를 클릭하거나 아래 "실거래가 불러오기"에 이름을 입력해 드롭다운에서 한 건을 선택하세요. ③ 가격·주소가 자동 입력된 것을 확인하고 "계산하기"를 눌러 결과를 봅니다.
-    </div>
   </div>
 
   <div class="card" style="margin-bottom:12px;">
@@ -79,7 +82,8 @@
     <div style="margin-top:12px; font-size:12px; color:#475569; line-height:1.6; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:8px 10px;">
       <div>1) 실거래가 기준</div>
       <div>2) 단순 참고용</div>
-      <div>3) 모든 저작권은 부뚝딱(부동산뚝딱)에게 있음 — 투자 문의: <a href="mailto:peter9596@gmail.com" style="color:#d65a00;">peter9596@gmail.com</a></div>
+      <div>3) 모든 저작권은 부뚝딱(부동산뚝딱)에게 있음</div>
+      <div>4) 투자문의: <a href="mailto:peter9596@gmail.com" style="color:#d65a00;">peter9596@gmail.com</a></div>
     </div>
   </div>
     <script>
