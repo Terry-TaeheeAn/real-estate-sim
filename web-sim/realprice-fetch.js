@@ -8,6 +8,7 @@
 let REALPRICE_SERVICE_KEY = ""; // 예: "eaddd..." (직접 커밋 금지)
 let REALPRICE_PROXY_URL = ""; // 예: "http://localhost:5001/api/rtms" (백엔드 프록시 경로)
 let REALPRICE_CACHE_URL = ""; // 예: "http://localhost:5001/api/cache/suggestions" (캐시 조회 경로)
+let STATIC_SUGGESTIONS_URL = ""; // github.io 정적 스냅샷용
 
 // 전역에서 미리 주입된 기본값 사용 (index.html 등에서 window.REALPRICE_PROXY_URL 설정 시)
 if (typeof window !== "undefined" && window.REALPRICE_PROXY_URL) {
@@ -16,8 +17,13 @@ if (typeof window !== "undefined" && window.REALPRICE_PROXY_URL) {
 if (typeof window !== "undefined" && window.REALPRICE_CACHE_URL) {
   REALPRICE_CACHE_URL = window.REALPRICE_CACHE_URL;
 }
+if (typeof window !== "undefined" && window.STATIC_SUGGESTIONS_URL) {
+  STATIC_SUGGESTIONS_URL = window.STATIC_SUGGESTIONS_URL;
+}
 
 const RTMS_ENDPOINT = "https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade";
+
+let staticSuggestionsCache = null;
 
 // 기본 LAWD_CD 목록(서울+부산 예시). setLawdList로 교체 가능.
 let LAWD_CD_LIST = ["11680"]; // MVP: 강남구만 기본 조회로 호출량 축소
@@ -122,6 +128,23 @@ function normalizeName(name) {
     .replace(/-/g, "");
 }
 
+async function loadStaticSuggestions() {
+  if (!STATIC_SUGGESTIONS_URL) return [];
+  if (staticSuggestionsCache) return staticSuggestionsCache;
+  staticSuggestionsCache = (async () => {
+    try {
+      const res = await fetch(STATIC_SUGGESTIONS_URL, { cache: "no-cache" });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch (e) {
+      console.warn("static suggestions fetch failed", e);
+      return [];
+    }
+  })();
+  return staticSuggestionsCache;
+}
+
 // 최근 거래 1건 찾기: 입력한 아파트명과 부분일치하는 최신 데이터
 async function findLatestDealByName({ lawdCd, aptName, months = 36 }) {
   const target = normalizeName(aptName);
@@ -142,6 +165,18 @@ async function findLatestDealByName({ lawdCd, aptName, months = 36 }) {
 async function findSuggestionsByName({ aptName, months = 1, maxResults = 3, lawdList = LAWD_CD_LIST, dealYmd }) {
   const target = normalizeName(aptName);
   if (!target) return [];
+
+  if (STATIC_SUGGESTIONS_URL) {
+    const all = await loadStaticSuggestions();
+    const filtered = all.filter((it) => {
+      const norm = normalizeName(it.aptNm || it.아파트);
+      if (!norm.includes(target)) return false;
+      if (lawdList && lawdList.length && it.lawdCd && !lawdList.includes(it.lawdCd)) return false;
+      return true;
+    });
+    const sorted = filtered.sort((a, b) => (b.dealYmd || "").localeCompare(a.dealYmd || ""));
+    return sorted.slice(0, maxResults);
+  }
 
   if (REALPRICE_CACHE_URL) {
     const url = new URL(REALPRICE_CACHE_URL);
@@ -222,9 +257,11 @@ async function findSuggestionsByName({ aptName, months = 1, maxResults = 3, lawd
 // 법정동 코드 → 시/구 이름 매핑 (필요 시 추가 확장)
 const LAWD_NAME = {
   "11680": "서울시 강남구",
+  "11650": "서울시 서초구",
   "11740": "서울시 서초구",
   "11110": "서울시 종로구",
   "11140": "서울시 중구",
+  "11170": "서울시 용산구",
   "11200": "서울시 성동구",
   "11215": "서울시 광진구",
   "11230": "서울시 동대문구",
@@ -274,6 +311,10 @@ function buildAddress(deal) {
     return parts.join(" ");
   }
   const parts = [gu, deal.umdNm, deal.jibun].filter(Boolean);
+  // Fallback: 시/구가 비어도 동/지번으로 최소한의 주소를 구성
+  if (!gu && deal.umdNm) {
+    return ["서울시", deal.umdNm, deal.jibun].filter(Boolean).join(" ");
+  }
   return parts.join(" ");
 }
 

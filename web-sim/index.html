@@ -67,13 +67,16 @@
     </div>
   </div>
     <script>
-      // github.io에서는 혼합콘텐츠를 막기 위해 localhost 프록시/캐시 호출을 비활성화
+      // github.io에서는 혼합콘텐츠를 막기 위해 localhost 프록시/캐시 호출을 비활성화하고
+      // 정적 스냅샷(points/suggestions JSON)을 읽어오는 초경량 모드로 전환합니다.
       const isGithub = /github\.io$/.test(location.hostname);
       window.REALPRICE_PROXY_URL = isGithub ? "" : "http://localhost:5001/api/rtms";
       window.REALPRICE_CACHE_URL = isGithub ? "" : "http://localhost:5001/api/cache/suggestions";
+      window.STATIC_POINTS_URL = isGithub ? "./points.json" : "";
+      window.STATIC_SUGGESTIONS_URL = isGithub ? "./suggestions.json" : "";
       if (isGithub) {
         const mapStatusEl = document.getElementById('map-status');
-        if (mapStatusEl) mapStatusEl.textContent = '캐시 서버 미연결: 지도만 표시됩니다.';
+        if (mapStatusEl) mapStatusEl.textContent = '정적 캐시 로드 중 (지도+핀+자동입력)';
       }
     </script>
     <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=41f6f0031d7afb62cf6dadc629a3260d&libraries=services,clusterer,geometry"></script>

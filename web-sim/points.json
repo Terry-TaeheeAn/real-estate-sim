@@ -1,0 +1,12 @@
+[
+	{ "aptNm": "래미안대치팰리스", "umdNm": "대치동", "jibun": "101-1", "lawdCd": "11680", "excluUseAr": 84.99 },
+	{ "aptNm": "자이개포", "umdNm": "개포동", "jibun": "12", "lawdCd": "11680", "excluUseAr": 84.98 },
+	{ "aptNm": "반포자이", "umdNm": "반포동", "jibun": "1-1", "lawdCd": "11650", "excluUseAr": 84.99 },
+	{ "aptNm": "아크로리버파크", "umdNm": "신반포동", "jibun": "21", "lawdCd": "11650", "excluUseAr": 84.95 },
+	{ "aptNm": "헬리오시티", "umdNm": "가락동", "jibun": "479", "lawdCd": "11710", "excluUseAr": 84.97 },
+	{ "aptNm": "마포래미안푸르지오", "umdNm": "아현동", "jibun": "600", "lawdCd": "11440", "excluUseAr": 84.99 },
+	{ "aptNm": "송파파크하비오", "umdNm": "문정동", "jibun": "628", "lawdCd": "11710", "excluUseAr": 59.98 },
+	{ "aptNm": "용산시티파크", "umdNm": "한강로2가", "jibun": "191", "lawdCd": "11170", "excluUseAr": 84.98 },
+	{ "aptNm": "광장힐스테이트", "umdNm": "광장동", "jibun": "238", "lawdCd": "11215", "excluUseAr": 84.91 },
+	{ "aptNm": "목동신시가지7단지", "umdNm": "목동", "jibun": "923", "lawdCd": "11470", "excluUseAr": 84.8 }
+]

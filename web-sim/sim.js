@@ -287,6 +287,8 @@ let evaluating = false;
 const CACHE_BASE = (typeof window !== "undefined" && window.REALPRICE_CACHE_URL
   ? window.REALPRICE_CACHE_URL.replace(/\/api\/cache\/suggestions.*$/, "")
   : "");
+const STATIC_POINTS_URL = typeof window !== "undefined" ? window.STATIC_POINTS_URL || "" : "";
+const STATIC_SUGGESTIONS_URL = typeof window !== "undefined" ? window.STATIC_SUGGESTIONS_URL || "" : "";
 
 const FORM_STATE_KEY = "rp-form-state-v1";
 const FORM_DEFAULTS = {
@@ -451,6 +453,14 @@ async function showSuggestionsOnMap(list) {
 }
 
 async function fetchAllPoints() {
+  if (STATIC_POINTS_URL) {
+    try {
+      const res = await fetch(STATIC_POINTS_URL, { cache: "no-cache" });
+      if (res.ok) return res.json();
+    } catch (e) {
+      console.warn("static points fetch failed", e);
+    }
+  }
   if (!CACHE_BASE) return [];
   const url = `${CACHE_BASE}/api/cache/points?months=3&max=200`;
   const res = await fetch(url);
