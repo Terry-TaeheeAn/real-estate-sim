@@ -632,11 +632,16 @@ async function plotBasePoints(list) {
   await Promise.all(
     list.map((it) =>
       limit(async () => {
-        const candidates = buildCandidateAddresses(it);
-        if (!candidates.length) return;
-        const geo = await geocodeFirstHit(ctx, candidates);
-        if (!geo) return;
-        const latlng = new kakao.maps.LatLng(Number(geo.y), Number(geo.x));
+        let latlng = null;
+        if (it.lat != null && it.lng != null) {
+          latlng = new kakao.maps.LatLng(Number(it.lat), Number(it.lng));
+        } else {
+          const candidates = buildCandidateAddresses(it);
+          if (!candidates.length) return;
+          const geo = await geocodeFirstHit(ctx, candidates);
+          if (!geo) return;
+          latlng = new kakao.maps.LatLng(Number(geo.y), Number(geo.x));
+        }
         bounds.extend(latlng);
         const marker = new kakao.maps.Marker({ position: latlng, title: it.aptNm || "", image: markerImage() });
         marker.__apt = it;
