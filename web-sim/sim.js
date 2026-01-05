@@ -44,8 +44,16 @@ const DSR_DEFAULTS = {
   repaymentType: "원리금균등",
 };
 
+const PROPERTY_TAX_TYPES = {
+  HOUSE: "주택",
+  BUILDING: "건축물",
+  RAW_LAND: "나대지등_종합합산",
+  BUSINESS_LAND: "사업용토지_별도합산",
+  OTHER_LAND: "기타토지_분리과세",
+};
+
 const EOK = 100_000_000; // 억 원 단위 → 원 변환용
-const AVERAGE_SAVING_RATE = 0.105; // OECD 한국 가계순저축률(가처분소득 대비) 약 10.5% 참고
+const AVERAGE_SAVING_RATE = 0.3; // 저축률 30% 가정
 
 // ----- 중개보수 -----
 const BROKERAGE_FEE_TABLE = [
@@ -67,6 +75,42 @@ const OTHER_COST_DEFAULTS = {
   brokerage: 2_840_000,
   miscCost: 15_797_333,
 };
+
+// ----- 재산세 / 지역자원시설세 -----
+const HOUSE_TAX_GENERAL = [
+  { threshold: 0, upTo: 60_000_000, baseTax: 0, rate: 0.001 },
+  { threshold: 60_000_000, upTo: 150_000_000, baseTax: 60_000, rate: 0.0015 },
+  { threshold: 150_000_000, upTo: 300_000_000, baseTax: 195_000, rate: 0.0025 },
+  { threshold: 300_000_000, upTo: Infinity, baseTax: 570_000, rate: 0.004 },
+];
+
+const HOUSE_TAX_SPECIAL = [
+  { threshold: 0, upTo: 60_000_000, baseTax: 0, rate: 0.0005 },
+  { threshold: 60_000_000, upTo: 150_000_000, baseTax: 30_000, rate: 0.001 },
+  { threshold: 150_000_000, upTo: 300_000_000, baseTax: 120_000, rate: 0.002 },
+  { threshold: 300_000_000, upTo: Infinity, baseTax: 420_000, rate: 0.0035 },
+];
+
+const RAW_LAND_TAX = [
+  { threshold: 0, upTo: 50_000_000, baseTax: 0, rate: 0.002 },
+  { threshold: 50_000_000, upTo: 100_000_000, baseTax: 100_000, rate: 0.003 },
+  { threshold: 100_000_000, upTo: Infinity, baseTax: 250_000, rate: 0.005 },
+];
+
+const BUSINESS_LAND_TAX = [
+  { threshold: 0, upTo: 200_000_000, baseTax: 0, rate: 0.002 },
+  { threshold: 200_000_000, upTo: 1_000_000_000, baseTax: 400_000, rate: 0.003 },
+  { threshold: 1_000_000_000, upTo: Infinity, baseTax: 2_800_000, rate: 0.004 },
+];
+
+const FIRE_TAX_BUILDING = [
+  { threshold: 0, upTo: 6_000_000, baseTax: 0, rate: 0.0004 },
+  { threshold: 6_000_000, upTo: 13_000_000, baseTax: 2_400, rate: 0.0005 },
+  { threshold: 13_000_000, upTo: 26_000_000, baseTax: 5_900, rate: 0.0006 },
+  { threshold: 26_000_000, upTo: 39_000_000, baseTax: 13_700, rate: 0.0006 },
+  { threshold: 39_000_000, upTo: 64_000_000, baseTax: 24_100, rate: 0.001 },
+  { threshold: 64_000_000, upTo: Infinity, baseTax: 49_100, rate: 0.0012 },
+];
 
 // ----- 취득세 테이블 (test1.ts와 동일) -----
 const midBracketRate = (price) => {
@@ -202,11 +246,81 @@ function computeBrokerageAmount(type, tradeType, price) {
   return rule.cap != null ? Math.min(fee, rule.cap) : fee;
 }
 
+function calcProgressiveTax(taxBaseWon, brackets) {
+  const base = Math.max(0, Math.floor(taxBaseWon));
+  for (const b of brackets) {
+    if (base <= b.upTo) {
+      const taxableExcess = Math.max(0, base - b.threshold);
+      return b.baseTax + taxableExcess * b.rate;
+    }
+  }
+  return 0;
+}
+
+function calcFireFacilityTax(taxBaseWon) {
+  return calcProgressiveTax(taxBaseWon, FIRE_TAX_BUILDING);
+}
+
+function calcPropertyTax(params) {
+  const { assetType, taxBaseWon, isOneHouseSpecialUnder9Eok = false, buildingSubType, landSubType, includeFireTax = false } = params;
+  const base = Math.max(0, Math.floor(taxBaseWon));
+  let propertyTax = 0;
+  switch (assetType) {
+    case PROPERTY_TAX_TYPES.HOUSE: {
+      const table = isOneHouseSpecialUnder9Eok ? HOUSE_TAX_SPECIAL : HOUSE_TAX_GENERAL;
+      propertyTax = calcProgressiveTax(base, table);
+      break;
+    }
+    case PROPERTY_TAX_TYPES.BUILDING: {
+      if (buildingSubType === "골프장_고급오락장") propertyTax = base * 0.04;
+      else if (buildingSubType === "주거지역및지정지역_공장용건축물") propertyTax = base * 0.005;
+      else propertyTax = base * 0.0025;
+      break;
+    }
+    case PROPERTY_TAX_TYPES.RAW_LAND: {
+      propertyTax = calcProgressiveTax(base, RAW_LAND_TAX);
+      break;
+    }
+    case PROPERTY_TAX_TYPES.BUSINESS_LAND: {
+      propertyTax = calcProgressiveTax(base, BUSINESS_LAND_TAX);
+      break;
+    }
+    case PROPERTY_TAX_TYPES.OTHER_LAND: {
+      if (landSubType === "골프장및고급오락장용지") propertyTax = base * 0.04;
+      else if (landSubType === "전답과수원목장용지임야") propertyTax = base * 0.0007;
+      else propertyTax = base * 0.002;
+      break;
+    }
+    default:
+      propertyTax = 0;
+  }
+
+  const fireTax = includeFireTax && assetType === PROPERTY_TAX_TYPES.BUILDING ? calcFireFacilityTax(base) : 0;
+  return {
+    propertyTaxWon: propertyTax,
+    fireFacilityTaxWon: fireTax,
+    totalWon: propertyTax + fireTax,
+  };
+}
+
 function computeBondAmount(price) {
   const rule = BOND_TABLE.find((r) => price >= r.priceMin && (r.priceMax === null || price < r.priceMax));
   if (!rule) return 0;
   const amt = price * rule.rate;
   return rule.cap != null ? Math.min(amt, rule.cap) : amt;
+}
+
+function computeAnnualPropertyTax(form) {
+  const assetType = form.assetType || PROPERTY_TAX_TYPES.HOUSE;
+  const taxBaseWon = Math.max(0, Math.floor(form.price || 0));
+  const isSpecialOneHouse = assetType === PROPERTY_TAX_TYPES.HOUSE && form.homeCount === 0 && taxBaseWon <= 900_000_000;
+  const result = calcPropertyTax({
+    assetType,
+    taxBaseWon,
+    isOneHouseSpecialUnder9Eok: isSpecialOneHouse,
+    includeFireTax: assetType === PROPERTY_TAX_TYPES.BUILDING,
+  });
+  return result;
 }
 
 function computeMonthlyPayment(principal, annualRate, years, repaymentType) {
@@ -236,10 +350,10 @@ function computeFormResult(form) {
   const repaymentType = form.repaymentType ?? DSR_DEFAULTS.repaymentType;
   const rate = form.rate ?? DSR_DEFAULTS.baseInterest;
   const years = form.years ?? DSR_DEFAULTS.defaultYears;
+  const propertyTax = computeAnnualPropertyTax(form);
   const canPurchase = shortage <= 0;
   const monthlyPayment = computeMonthlyPayment(loanLimit, rate, years, repaymentType);
-  const propertyTaxMonthly = (form.propertyTaxAnnual || 0) / 12;
-  const monthlyFixedCost = monthlyPayment + (form.monthlyMgmtFee || 0) + propertyTaxMonthly;
+  const monthlyFixedCost = monthlyPayment + (form.monthlyMgmtFee || 0) + (propertyTax.totalWon || 0) / 12;
   const yearlySaving = Math.max(0, (form.incomeAnnual || 0) * AVERAGE_SAVING_RATE);
   const yearsToSaveRaw = shortage > 0 && yearlySaving > 0 ? shortage / yearlySaving : 0;
   const yearsToSave = yearsToSaveRaw > 0 ? Math.ceil(yearsToSaveRaw * 10) / 10 : 0;
@@ -249,8 +363,9 @@ function computeFormResult(form) {
     dsrLimit: dsr.limit,
     monthlyPayment,
     monthlyFixedCost,
-    propertyTaxMonthly,
     appliedSavingRate: AVERAGE_SAVING_RATE,
+    propertyTaxAnnual: propertyTax.totalWon,
+    propertyTaxBreakdown: propertyTax,
     taxes,
     brokerage,
     bond,
@@ -271,7 +386,8 @@ const resultsEl = document.getElementById("results");
 const errorEl = document.getElementById("error");
 const mapStatusEl = document.getElementById("map-status");
 
-const eokFields = ["price", "incomeAnnual", "equity"]; // 억 원 단위 입력
+const eokFields = ["price", "equity"]; // 억 원 단위 입력
+const manwonFields = ["incomeAnnual"]; // 만 원 단위 입력
 const percentFields = ["rate"]; // 입력을 % 단위로 받고 내부 계산은 소수로 변환
 
 const AREA_BUCKETS = [
@@ -282,8 +398,8 @@ const AREA_BUCKETS = [
 ];
 const DEFAULT_AREA_BUCKET = "py20to30";
 
-const MAIN_FIELD_KEYS = new Set(["equity", "incomeAnnual", "homeCount", "lifeFirst", "productType", "tradeType", "years", "rate", "repaymentType", "monthlyMgmtFee", "propertyTaxAnnual"]);
-const AUTO_FIELD_KEYS = new Set(["price", "address", "areaBucket"]);
+const MAIN_FIELD_KEYS = new Set(["equity", "incomeAnnual", "homeCount", "lifeFirst", "productType", "tradeType", "years", "rate", "repaymentType", "monthlyMgmtFee"]);
+const AUTO_FIELD_KEYS = new Set(["price", "address"]);
 
 // 정적 suggestions.json을 직접 읽어 필터링할 때 사용
 let staticSuggestionsLocal = null;
@@ -322,7 +438,7 @@ const fields = [
   { key: "price", label: "집 가격 (억원)", type: "text" },
   { key: "address", label: "주소 (지도 선택 시 자동)", type: "text" },
   { key: "equity", label: "내 현금·예금 (억원)", type: "text" },
-  { key: "incomeAnnual", label: "연소득 (억원)", type: "text" },
+  { key: "incomeAnnual", label: "연소득 (만원)", type: "text" },
   { key: "homeCount", label: "보유 주택 수", type: "select", options: ["0", "1", "2", "3"], display: { 0: "무주택", 1: "1채", 2: "2채", 3: "3채 이상" } },
   { key: "lifeFirst", label: "생애최초 구입", type: "select", options: ["true", "false"], display: { true: "예", false: "아니오" } },
   { key: "productType", label: "매물 종류", type: "select", options: ["아파트", "오피스텔", "기타"] },
@@ -331,7 +447,6 @@ const fields = [
   { key: "rate", label: "대출 금리 (연, %)", type: "text" },
   { key: "repaymentType", label: "상환 방식", type: "select", options: ["원리금균등", "원금균등", "원금만기일시상환"] },
   { key: "monthlyMgmtFee", label: "월 관리비 (만원)", type: "select", options: ["0", "10", "15", "20", "30", "40", "50"] },
-  { key: "propertyTaxAnnual", label: "연 재산세 (만원)", type: "select", options: ["0", "50", "100", "120", "150", "200", "300"] },
   { key: "areaBucket", label: "평형 선택", type: "radio-chips", options: AREA_BUCKETS.map((b) => ({ value: b.key, label: b.label })) },
 ];
 
@@ -361,13 +476,13 @@ const CACHE_BASE = (typeof window !== "undefined" && window.REALPRICE_CACHE_URL
 const STATIC_POINTS_URL = typeof window !== "undefined" ? window.STATIC_POINTS_URL || "" : "";
 const STATIC_SUGGESTIONS_URL = typeof window !== "undefined" ? window.STATIC_SUGGESTIONS_URL || "" : "";
 
-const FORM_STATE_KEY = "rp-form-state-v2";
+const FORM_STATE_KEY = "rp-form-state-v3";
 const FORM_DEFAULTS = {
   price: "",
-  incomeAnnual: "0.60", // 6천만 원
+  incomeAnnual: "6000", // 6천만 원(만원 단위)
   equity: "1.00", // 1억
   address: "",
-  homeCount: "1",
+  homeCount: "0",
   lifeFirst: "true",
   areaBucket: DEFAULT_AREA_BUCKET,
   areaOver85: "false",
@@ -376,8 +491,7 @@ const FORM_DEFAULTS = {
   years: "30",
   rate: "4.00",
   repaymentType: "원리금균등",
-  monthlyMgmtFee: "15", // 만원 단위
-  propertyTaxAnnual: "120", // 만원 단위
+  monthlyMgmtFee: "30", // 만원 단위
   rpApt: "",
 };
 
@@ -609,6 +723,10 @@ function detachMarker(marker) {
 
 function attachMarker(marker) {
   if (!marker) return;
+  if (marker.__areaFilteredOut) {
+    marker.__hidden = true;
+    return;
+  }
   if (mapCtx.clusterer) {
     if (!marker.__inClusterer) {
       mapCtx.clusterer.addMarker(marker);
@@ -704,6 +822,7 @@ async function computeMarkerScore(marker, baseForm) {
   const price = (Number(deal.dealAmount) || 0) * 10000;
   const addr = (RP && RP.buildAddress ? RP.buildAddress(deal) : "") || (RP && RP.buildAddress ? RP.buildAddress(marker.__apt) : "") || baseForm.address;
   const py = Number(deal.excluUseAr) ? Number(deal.excluUseAr) * 0.3025 : null;
+  marker.__dealPy = py;
   const bucket = py ? bucketFromPy(py) : getAreaBucket(baseForm.areaBucket);
   const form = {
     ...baseForm,
@@ -728,7 +847,7 @@ async function evaluateVisibleMarkers() {
   const ctx = await initKakaoMap();
   if (!ctx || !ctx.map || !ctx.baseMarkers.length) return;
   const bounds = ctx.map.getBounds();
-  const visible = ctx.baseMarkers.filter((m) => bounds.contain(m.getPosition()));
+  const visible = ctx.baseMarkers.filter((m) => !m.__areaFilteredOut && bounds.contain(m.getPosition()));
   if (!visible.length) return;
 
   // 축척이 충분히 좁아졌다면 최대 MAX_MARKERS_FOR_EVAL개까지만 중심에 가까운 순서로 평가
@@ -756,9 +875,11 @@ async function evaluateVisibleMarkers() {
             const score = await computeMarkerScore(marker, baseForm);
             marker.__score = score;
             if (score && score.yearsToSave > 10) {
+              marker.__filteredByScore = true;
               detachMarker(marker);
               return;
             }
+            marker.__filteredByScore = false;
             attachMarker(marker);
             colorMarkerByScore(marker, score);
             if (score && (score.ok || score.yearsToSave <= 0)) okCount += 1;
@@ -771,6 +892,7 @@ async function evaluateVisibleMarkers() {
         })
       )
     );
+    applyAreaFilter({ updateStatus: false, evaluate: false });
     setMapStatus(`줌-인 영역 ${visible.length}개 평가 완료 (가능 ${okCount}, 불가 ${failCount})`);
   } finally {
     evaluating = false;
@@ -806,6 +928,8 @@ async function plotBasePoints(list) {
         const marker = new kakao.maps.Marker({ position: latlng, title: it.aptNm || "", image: markerImage() });
         marker.__apt = it;
         marker.__hidden = false;
+        marker.__areaFilteredOut = false;
+        marker.__filteredByScore = false;
         marker.__inClusterer = false;
         kakao.maps.event.addListener(marker, "click", () => {
           if (rpAptEl) rpAptEl.value = it.aptNm || "";
@@ -855,6 +979,7 @@ async function plotBasePoints(list) {
       mapCtx.evalHooked = true;
     }
     scheduleEvaluateVisibleMarkers();
+    applyAreaFilter();
   } else {
     setMapStatus("지오코딩 결과가 없습니다.");
   }
@@ -897,6 +1022,59 @@ function isAreaOver85ByBucket(key) {
   return bucket.maxPy > 26; // 85㎡ ≈ 25.7평 → 26평 이상이면 과세 구간으로 처리
 }
 
+function extractPyFromApt(apt) {
+  if (!apt) return null;
+  const pyValue = Number(apt.py);
+  if (Number.isFinite(pyValue) && pyValue > 0) return pyValue;
+  const areaFields = ["excluUseAr", "excluArea", "exclusiveArea", "area", "전용면적"];
+  for (const key of areaFields) {
+    const val = Number(apt[key]);
+    if (Number.isFinite(val) && val > 0) return val * 0.3025; // ㎡ → 평 변환
+  }
+  return null;
+}
+
+function markerMatchesAreaBucket(marker, bucketKey) {
+  if (!marker || !marker.__apt) return null;
+  const py = Number.isFinite(marker.__dealPy) ? marker.__dealPy : extractPyFromApt(marker.__apt);
+  if (!Number.isFinite(py)) return null;
+  const bucket = bucketFromPy(py);
+  return bucket.key === bucketKey;
+}
+
+function applyAreaFilter({ updateStatus = true, evaluate = true } = {}) {
+  const key = inputs.areaBucket?.value || DEFAULT_AREA_BUCKET;
+  const bucketLabel = getAreaBucket(key).label;
+  if (!mapCtx.baseMarkers || !mapCtx.baseMarkers.length) return;
+  let shown = 0;
+  let mismatched = 0;
+  let unknown = 0;
+  mapCtx.baseMarkers.forEach((marker) => {
+    if (marker.__filteredByScore) {
+      detachMarker(marker);
+      unknown += 1;
+      return;
+    }
+    const match = markerMatchesAreaBucket(marker, key);
+    if (match === true) {
+      marker.__areaFilteredOut = false;
+      attachMarker(marker);
+      shown += 1;
+    } else {
+      marker.__areaFilteredOut = true;
+      detachMarker(marker);
+      if (match === false) mismatched += 1;
+      else unknown += 1;
+    }
+  });
+  if (updateStatus) {
+    const excluded = mismatched + unknown;
+    const detail = excluded ? `, 제외 ${excluded}건` : "";
+    setMapStatus(`선택 평형(${bucketLabel}) 매물 ${shown}건 표시${detail} (실거래 면적 기준)`);
+  }
+  if (evaluate) scheduleEvaluateVisibleMarkers();
+}
+
 function setAreaBucket(key, { save = false, evaluate = true } = {}) {
   const bucket = getAreaBucket(key);
   const hidden = inputs.areaBucket;
@@ -910,7 +1088,7 @@ function setAreaBucket(key, { save = false, evaluate = true } = {}) {
     btn.style.color = active ? "#d65a00" : "#0f172a";
   });
   if (save) saveFormState();
-  if (evaluate) scheduleEvaluateVisibleMarkers();
+  applyAreaFilter({ evaluate });
 }
 
 function setAreaBucketFromPy(py, opts = {}) {
@@ -1072,6 +1250,14 @@ fields.forEach((f) => {
     el.addEventListener("blur", () => formatEokField(el));
   }
 
+  if (manwonFields.includes(f.key)) {
+    el.addEventListener("input", () => {
+      const val = el.value.replace(/[^0-9.]/g, "");
+      el.value = val;
+    });
+    el.addEventListener("blur", () => formatNumberField(el));
+  }
+
   if (percentFields.includes(f.key)) {
     el.addEventListener("input", () => {
       const val = el.value.replace(/[^0-9.]/g, "");
@@ -1201,16 +1387,15 @@ function triggerDealSearch(aptName) {
 
 function readForm() {
   const priceEok = parseEokField(inputs.price);
-  const incomeEok = parseEokField(inputs.incomeAnnual);
+  const incomeManwon = parseNumberField(inputs.incomeAnnual);
   const equityEok = parseEokField(inputs.equity);
   const areaBucketKey = inputs.areaBucket?.value || DEFAULT_AREA_BUCKET;
   const monthlyMgmtFee = parseNumberField(inputs.monthlyMgmtFee) * 10000;
-  const propertyTaxAnnual = parseNumberField(inputs.propertyTaxAnnual) * 10000;
   const parsedRate = parsePercentField(inputs.rate);
   const rateValue = parsedRate > 0 ? parsedRate / 100 : DSR_DEFAULTS.baseInterest;
   return {
     price: priceEok * EOK,
-    incomeAnnual: incomeEok * EOK,
+    incomeAnnual: incomeManwon * 10000,
     equity: equityEok * EOK,
     address: inputs.address.value || "",
     homeCount: Number(inputs.homeCount.value || 0),
@@ -1223,7 +1408,7 @@ function readForm() {
     rate: rateValue,
     repaymentType: inputs.repaymentType.value || undefined,
     monthlyMgmtFee,
-    propertyTaxAnnual,
+    assetType: PROPERTY_TAX_TYPES.HOUSE,
   };
 }
 
@@ -1233,7 +1418,7 @@ function formatKRW(n) {
 }
 
 function renderResult(r) {
-  const monthlyMgmt = Math.max(0, r.monthlyFixedCost - r.monthlyPayment - r.propertyTaxMonthly);
+  const monthlyMgmt = Math.max(0, r.monthlyFixedCost - r.monthlyPayment - (r.propertyTaxAnnual || 0) / 12);
   const savingRateLabel = (r.appliedSavingRate * 100).toFixed(1);
   const ruralLine = r.taxes.ruralTax > 0
     ? `<div class="result-row"><span>· 농특세</span><span>${formatKRW(r.taxes.ruralTax)}</span></div>`
@@ -1262,13 +1447,14 @@ function renderResult(r) {
     <div class="result-row"><span>월 고정비(원리금+관리비+재산세/12)</span><strong>${formatKRW(r.monthlyFixedCost)}</strong></div>
     <div class="result-row"><span>· 월 상환액</span><span>${formatKRW(r.monthlyPayment)}</span></div>
     <div class="result-row"><span>· 월 관리비</span><span>${formatKRW(monthlyMgmt)}</span></div>
-    <div class="result-row"><span>· 재산세/12</span><span>${formatKRW(r.propertyTaxMonthly)}</span></div>
+    <div class="result-row"><span>· 재산세/12</span><span>${formatKRW((r.propertyTaxAnnual || 0) / 12)}</span></div>
+    <div class="result-row"><span>재산세(연)</span><span>${formatKRW(r.propertyTaxAnnual || 0)}</span></div>
     <hr />
     <div class="result-row"><span>지금 살 수 있나요?</span><strong style="color:${availabilityColor};">${r.canPurchase ? "지금 가능" : "조금 더 필요"}</strong></div>
     <div class="result-row"><span>부족 시 모아야 할 기간(년)</span><span style="color:${availabilityColor};">${r.yearsToSave}</span></div>
     <div class="result-row"><span>적용 저축률</span><span>${savingRateLabel}%</span></div>
   `;
-  resultsEl.innerHTML += `<div style="font-size:12px; color:#64748b; margin-top:6px;">평균 저축률 ${savingRateLabel}% (OECD 한국 가계순저축률 참고치)로 계산했어요.</div>`;
+  resultsEl.innerHTML += `<div style="font-size:12px; color:#64748b; margin-top:6px;">저축률을 ${savingRateLabel}%로 가정했고, 재산세는 매매가를 과세표준으로 보고 1주택 9억 이하 특례 여부를 자동 판별해 계산했어요.</div>`;
 }
 
 function validate(form) {
