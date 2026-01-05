@@ -44,6 +44,9 @@ const DSR_DEFAULTS = {
   repaymentType: "원리금균등",
 };
 
+const EOK = 100_000_000; // 억 원 단위 → 원 변환용
+const AVERAGE_SAVING_RATE = 0.105; // OECD 한국 가계순저축률(가처분소득 대비) 약 10.5% 참고
+
 // ----- 중개보수 -----
 const BROKERAGE_FEE_TABLE = [
   { type: "아파트", tradeType: "매매", priceMin: 0, priceMax: 50_000_000, rate: 0.006, cap: null },
@@ -234,10 +237,31 @@ function computeFormResult(form) {
   const rate = form.rate ?? DSR_DEFAULTS.baseInterest;
   const years = form.years ?? DSR_DEFAULTS.defaultYears;
   const canPurchase = shortage <= 0;
-  const yearlySaving = form.incomeAnnual > 0 ? form.incomeAnnual : 0;
-  const yearsToSave = shortage > 0 && yearlySaving > 0 ? Math.ceil((shortage / yearlySaving) * 10) / 10 : 0;
   const monthlyPayment = computeMonthlyPayment(loanLimit, rate, years, repaymentType);
-  return { loanLimit, ltvLimit, dsrLimit: dsr.limit, monthlyPayment, taxes, brokerage, bond, otherMisc, totalAcquisition, neededCash, shortage, equity: form.equity, canPurchase, yearsToSave };
+  const propertyTaxMonthly = (form.propertyTaxAnnual || 0) / 12;
+  const monthlyFixedCost = monthlyPayment + (form.monthlyMgmtFee || 0) + propertyTaxMonthly;
+  const yearlySaving = Math.max(0, (form.incomeAnnual || 0) * AVERAGE_SAVING_RATE);
+  const yearsToSaveRaw = shortage > 0 && yearlySaving > 0 ? shortage / yearlySaving : 0;
+  const yearsToSave = yearsToSaveRaw > 0 ? Math.ceil(yearsToSaveRaw * 10) / 10 : 0;
+  return {
+    loanLimit,
+    ltvLimit,
+    dsrLimit: dsr.limit,
+    monthlyPayment,
+    monthlyFixedCost,
+    propertyTaxMonthly,
+    appliedSavingRate: AVERAGE_SAVING_RATE,
+    taxes,
+    brokerage,
+    bond,
+    otherMisc,
+    totalAcquisition,
+    neededCash,
+    shortage,
+    equity: form.equity,
+    canPurchase,
+    yearsToSave,
+  };
 }
 
 // ----- UI -----
@@ -247,11 +271,19 @@ const resultsEl = document.getElementById("results");
 const errorEl = document.getElementById("error");
 const mapStatusEl = document.getElementById("map-status");
 
-const commaFields = ["price", "incomeAnnual", "equity"];
+const eokFields = ["price", "incomeAnnual", "equity"]; // 억 원 단위 입력
 const percentFields = ["rate"]; // 입력을 % 단위로 받고 내부 계산은 소수로 변환
 
-const MAIN_FIELD_KEYS = new Set(["equity", "incomeAnnual", "homeCount", "lifeFirst", "productType", "tradeType", "years", "rate", "repaymentType"]);
-const AUTO_FIELD_KEYS = new Set(["price", "address", "areaOver85"]);
+const AREA_BUCKETS = [
+  { key: "under20", label: "~20평", minPy: 0, maxPy: 20 },
+  { key: "py20to30", label: "20~30평", minPy: 20, maxPy: 30 },
+  { key: "py30to40", label: "30~40평", minPy: 30, maxPy: 40 },
+  { key: "py40plus", label: "40평~", minPy: 40, maxPy: Infinity },
+];
+const DEFAULT_AREA_BUCKET = "py20to30";
+
+const MAIN_FIELD_KEYS = new Set(["equity", "incomeAnnual", "homeCount", "lifeFirst", "productType", "tradeType", "years", "rate", "repaymentType", "monthlyMgmtFee", "propertyTaxAnnual"]);
+const AUTO_FIELD_KEYS = new Set(["price", "address", "areaBucket"]);
 
 // 정적 suggestions.json을 직접 읽어 필터링할 때 사용
 let staticSuggestionsLocal = null;
@@ -287,18 +319,20 @@ async function loadStaticSuggestionsLocal() {
 }
 
 const fields = [
-  { key: "price", label: "매매가 (원)", type: "text" },
-  { key: "address", label: "주소", type: "text" },
-  { key: "equity", label: "순자산 (원)", type: "text" },
-  { key: "incomeAnnual", label: "연소득 (원)", type: "text" },
-  { key: "homeCount", label: "매입 후 주택 수", type: "number", placeholder: "1" },
-  { key: "lifeFirst", label: "생애최초 여부", type: "select", options: ["false", "true"], display: { false: "아니오", true: "예" } },
-  { key: "areaOver85", label: "전용 85㎡ 초과", type: "select", options: ["false", "true"], display: { false: "이하", true: "초과" } },
-  { key: "productType", label: "상품구분", type: "select", options: ["아파트", "오피스텔", "기타"] },
-  { key: "tradeType", label: "거래유형", type: "select", options: ["매매", "임대차"] },
-  { key: "years", label: "대출 만기 (년)", type: "select", options: ["10", "20", "30"] },
-  { key: "rate", label: "금리 (연, %)", type: "text" },
-  { key: "repaymentType", label: "상환방식", type: "select", options: ["원리금균등", "원금균등", "원금만기일시상환"] },
+  { key: "price", label: "집 가격 (억원)", type: "text" },
+  { key: "address", label: "주소 (지도 선택 시 자동)", type: "text" },
+  { key: "equity", label: "내 현금·예금 (억원)", type: "text" },
+  { key: "incomeAnnual", label: "연소득 (억원)", type: "text" },
+  { key: "homeCount", label: "보유 주택 수", type: "select", options: ["0", "1", "2", "3"], display: { 0: "무주택", 1: "1채", 2: "2채", 3: "3채 이상" } },
+  { key: "lifeFirst", label: "생애최초 구입", type: "select", options: ["true", "false"], display: { true: "예", false: "아니오" } },
+  { key: "productType", label: "매물 종류", type: "select", options: ["아파트", "오피스텔", "기타"] },
+  { key: "tradeType", label: "거래 유형", type: "select", options: ["매매", "임대차"] },
+  { key: "years", label: "대출 기간 (년)", type: "select", options: ["10", "20", "30"] },
+  { key: "rate", label: "대출 금리 (연, %)", type: "text" },
+  { key: "repaymentType", label: "상환 방식", type: "select", options: ["원리금균등", "원금균등", "원금만기일시상환"] },
+  { key: "monthlyMgmtFee", label: "월 관리비 (만원)", type: "select", options: ["0", "10", "15", "20", "30", "40", "50"] },
+  { key: "propertyTaxAnnual", label: "연 재산세 (만원)", type: "select", options: ["0", "50", "100", "120", "150", "200", "300"] },
+  { key: "areaBucket", label: "평형 선택", type: "radio-chips", options: AREA_BUCKETS.map((b) => ({ value: b.key, label: b.label })) },
 ];
 
 const inputs = {};
@@ -327,20 +361,23 @@ const CACHE_BASE = (typeof window !== "undefined" && window.REALPRICE_CACHE_URL
 const STATIC_POINTS_URL = typeof window !== "undefined" ? window.STATIC_POINTS_URL || "" : "";
 const STATIC_SUGGESTIONS_URL = typeof window !== "undefined" ? window.STATIC_SUGGESTIONS_URL || "" : "";
 
-const FORM_STATE_KEY = "rp-form-state-v1";
+const FORM_STATE_KEY = "rp-form-state-v2";
 const FORM_DEFAULTS = {
   price: "",
-  incomeAnnual: "",
-  equity: "",
+  incomeAnnual: "0.60", // 6천만 원
+  equity: "1.00", // 1억
   address: "",
-  homeCount: "",
-  lifeFirst: "false",
+  homeCount: "1",
+  lifeFirst: "true",
+  areaBucket: DEFAULT_AREA_BUCKET,
   areaOver85: "false",
   productType: "아파트",
   tradeType: "매매",
   years: "30",
   rate: "4.00",
   repaymentType: "원리금균등",
+  monthlyMgmtFee: "15", // 만원 단위
+  propertyTaxAnnual: "120", // 만원 단위
   rpApt: "",
 };
 
@@ -544,6 +581,7 @@ function markerImage(color = "orange") {
     orange: { fill: "#ff7a1a", stroke: "#d65a00" },
     green: { fill: "#10b981", stroke: "#0f766e" },
     red: { fill: "#ef4444", stroke: "#b91c1c" },
+    gray: { fill: "#cbd5e1", stroke: "#94a3b8" },
   };
   const tone = palette[color] || palette.orange;
   const svg = encodeURIComponent(
@@ -559,6 +597,29 @@ function setMarkerColor(marker, color) {
   marker.setImage(markerImage(color));
 }
 
+function detachMarker(marker) {
+  if (!marker) return;
+  if (mapCtx.clusterer && marker.__inClusterer) {
+    mapCtx.clusterer.removeMarker(marker);
+    marker.__inClusterer = false;
+  }
+  marker.setMap(null);
+  marker.__hidden = true;
+}
+
+function attachMarker(marker) {
+  if (!marker) return;
+  if (mapCtx.clusterer) {
+    if (!marker.__inClusterer) {
+      mapCtx.clusterer.addMarker(marker);
+      marker.__inClusterer = true;
+    }
+  } else {
+    marker.setMap(mapCtx.map);
+  }
+  marker.__hidden = false;
+}
+
 function distanceBetween(a, b) {
   if (!a || !b) return Infinity;
   if (kakao?.maps?.geometry?.spherical?.computeDistanceBetween) {
@@ -572,13 +633,23 @@ function distanceBetween(a, b) {
 
 function colorMarkerByScore(marker, score) {
   if (!marker) return;
-  if (score && score.ok) {
-    setMarkerColor(marker, "green");
-  } else if (score) {
-    setMarkerColor(marker, "red");
-  } else {
+  if (!score) {
     setMarkerColor(marker, "orange");
+    return;
   }
+  if (score.ok || score.yearsToSave <= 0) {
+    setMarkerColor(marker, "green");
+    return;
+  }
+  if (score.yearsToSave <= 5) {
+    setMarkerColor(marker, "orange");
+    return;
+  }
+  if (score.yearsToSave <= 10) {
+    setMarkerColor(marker, "red");
+    return;
+  }
+  detachMarker(marker);
 }
 
 async function fetchLatestDealFromCache(aptNm) {
@@ -632,14 +703,17 @@ async function computeMarkerScore(marker, baseForm) {
   if (!deal) return null;
   const price = (Number(deal.dealAmount) || 0) * 10000;
   const addr = (RP && RP.buildAddress ? RP.buildAddress(deal) : "") || (RP && RP.buildAddress ? RP.buildAddress(marker.__apt) : "") || baseForm.address;
+  const py = Number(deal.excluUseAr) ? Number(deal.excluUseAr) * 0.3025 : null;
+  const bucket = py ? bucketFromPy(py) : getAreaBucket(baseForm.areaBucket);
   const form = {
     ...baseForm,
     price,
     address: addr,
-    areaOver85: Number(deal.excluUseAr) > 85,
+    areaBucket: bucket.key,
+    areaOver85: isAreaOver85ByBucket(bucket.key),
   };
   const result = computeFormResult(form);
-  return { ok: result.canPurchase, price, dealYmd: deal.dealYmd, formUsed: form };
+  return { ok: result.canPurchase, price, dealYmd: deal.dealYmd, formUsed: form, yearsToSave: result.yearsToSave };
 }
 
 function scheduleEvaluateVisibleMarkers() {
@@ -681,8 +755,13 @@ async function evaluateVisibleMarkers() {
           try {
             const score = await computeMarkerScore(marker, baseForm);
             marker.__score = score;
+            if (score && score.yearsToSave > 10) {
+              detachMarker(marker);
+              return;
+            }
+            attachMarker(marker);
             colorMarkerByScore(marker, score);
-            if (score && score.ok) okCount += 1;
+            if (score && (score.ok || score.yearsToSave <= 0)) okCount += 1;
             else if (score) failCount += 1;
             else setMarkerColor(marker, "orange");
           } catch (err) {
@@ -726,6 +805,8 @@ async function plotBasePoints(list) {
         bounds.extend(latlng);
         const marker = new kakao.maps.Marker({ position: latlng, title: it.aptNm || "", image: markerImage() });
         marker.__apt = it;
+        marker.__hidden = false;
+        marker.__inClusterer = false;
         kakao.maps.event.addListener(marker, "click", () => {
           if (rpAptEl) rpAptEl.value = it.aptNm || "";
           if (rpStatusEl) rpStatusEl.textContent = `지도에서 선택됨: ${it.aptNm || ""}`;
@@ -736,6 +817,11 @@ async function plotBasePoints(list) {
           Promise.resolve(computeMarkerScore(marker, baseForm))
             .then((score) => {
               marker.__score = score;
+              if (score && score.yearsToSave > 10) {
+                detachMarker(marker);
+                return;
+              }
+              attachMarker(marker);
               colorMarkerByScore(marker, score);
             })
             .catch((err) => {
@@ -752,6 +838,9 @@ async function plotBasePoints(list) {
   if (plotted > 0) {
     if (ctx.clusterer) {
       ctx.clusterer.addMarkers(markers);
+      markers.forEach((m) => {
+        m.__inClusterer = true;
+      });
       kakao.maps.event.addListener(ctx.clusterer, "clusterclick", (cluster) => {
         const level = ctx.map.getLevel();
         ctx.map.setLevel(Math.max(level - 1, 1), { anchor: cluster.getCenter() });
@@ -775,6 +864,58 @@ function parseNumberField(el) {
   const raw = (el.value || "").toString().replace(/,/g, "").trim();
   const n = Number(raw);
   return Number.isFinite(n) ? n : 0;
+}
+
+function parseEokField(el) {
+  const raw = (el.value || "").toString().replace(/,/g, "").trim();
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatEokField(el) {
+  const n = parseEokField(el);
+  if (!el.value) {
+    el.value = "";
+  } else {
+    el.value = n.toFixed(2);
+  }
+  return n;
+}
+
+function getAreaBucket(key) {
+  return AREA_BUCKETS.find((b) => b.key === key) || AREA_BUCKETS.find((b) => b.key === DEFAULT_AREA_BUCKET) || AREA_BUCKETS[0];
+}
+
+function bucketFromPy(py) {
+  if (!Number.isFinite(py)) return getAreaBucket(DEFAULT_AREA_BUCKET);
+  return AREA_BUCKETS.find((b) => py >= b.minPy && py < b.maxPy) || getAreaBucket(DEFAULT_AREA_BUCKET);
+}
+
+function isAreaOver85ByBucket(key) {
+  const bucket = getAreaBucket(key);
+  if (!bucket) return false;
+  return bucket.maxPy > 26; // 85㎡ ≈ 25.7평 → 26평 이상이면 과세 구간으로 처리
+}
+
+function setAreaBucket(key, { save = false, evaluate = true } = {}) {
+  const bucket = getAreaBucket(key);
+  const hidden = inputs.areaBucket;
+  if (!hidden || !bucket) return;
+  hidden.value = bucket.key;
+  const buttons = hidden.__buttons || [];
+  buttons.forEach((btn) => {
+    const active = btn.dataset.value === bucket.key;
+    btn.style.background = active ? "#ffedd5" : "#fff";
+    btn.style.borderColor = active ? "#ff7a1a" : "#cbd5e1";
+    btn.style.color = active ? "#d65a00" : "#0f172a";
+  });
+  if (save) saveFormState();
+  if (evaluate) scheduleEvaluateVisibleMarkers();
+}
+
+function setAreaBucketFromPy(py, opts = {}) {
+  const bucket = bucketFromPy(py);
+  setAreaBucket(bucket.key, opts);
 }
 
 function formatNumberField(el) {
@@ -824,7 +965,10 @@ function loadFormState() {
     if (!raw) return;
     const stored = JSON.parse(raw);
     Object.keys(inputs).forEach((k) => {
-      if (stored[k] != null && inputs[k]) inputs[k].value = stored[k];
+      if (stored[k] != null && inputs[k]) {
+        if (k === "areaBucket") setAreaBucket(stored[k], { save: false, evaluate: false });
+        else inputs[k].value = stored[k];
+      }
     });
     if (stored.rpApt != null && rpAptEl) rpAptEl.value = stored.rpApt;
   } catch (e) {
@@ -839,7 +983,8 @@ function applyDefaultValues() {
       return;
     }
     if (inputs[k] && !inputs[k].value) {
-      inputs[k].value = v;
+      if (k === "areaBucket") setAreaBucket(v, { save: false, evaluate: false });
+      else inputs[k].value = v;
     }
   });
 }
@@ -850,41 +995,81 @@ fields.forEach((f) => {
   lab.textContent = f.label;
   wrap.appendChild(lab);
   let el;
+  const targetGrid = AUTO_FIELD_KEYS.has(f.key) ? autoGrid : mainGrid;
+  if (!targetGrid) {
+    console.warn("missing form grid for", f.key);
+    return;
+  }
+
   if (f.type === "select") {
     el = document.createElement("select");
     f.options.forEach((opt) => {
       const o = document.createElement("option");
-      o.value = opt;
-      o.textContent = f.display ? f.display[opt] : opt;
+      o.value = typeof opt === "string" ? opt : opt.value;
+      o.textContent = f.display ? f.display[opt] : typeof opt === "string" ? opt : opt.label;
       el.appendChild(o);
     });
+    el.id = f.key;
+    el.style.marginTop = "4px";
+    wrap.appendChild(el);
+    targetGrid.appendChild(wrap);
+    inputs[f.key] = el;
+  } else if (f.type === "radio-chips") {
+    el = document.createElement("input");
+    el.type = "hidden";
+    el.id = f.key;
+    const chipWrap = document.createElement("div");
+    chipWrap.style.display = "flex";
+    chipWrap.style.flexWrap = "wrap";
+    chipWrap.style.gap = "6px";
+    const buttons = [];
+    f.options.forEach((opt) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = opt.label;
+      btn.dataset.value = opt.value;
+      btn.style.padding = "8px 10px";
+      btn.style.border = "1px solid #cbd5e1";
+      btn.style.borderRadius = "20px";
+      btn.style.background = "#fff";
+      btn.style.cursor = "pointer";
+      btn.addEventListener("click", () => {
+        el.value = opt.value;
+        buttons.forEach((b) => {
+          const active = b.dataset.value === opt.value;
+          b.style.background = active ? "#ffedd5" : "#fff";
+          b.style.borderColor = active ? "#ff7a1a" : "#cbd5e1";
+          b.style.color = active ? "#d65a00" : "#0f172a";
+        });
+        saveFormState();
+        scheduleEvaluateVisibleMarkers();
+      });
+      buttons.push(btn);
+      chipWrap.appendChild(btn);
+    });
+    wrap.appendChild(el);
+    wrap.appendChild(chipWrap);
+    targetGrid.appendChild(wrap);
+    inputs[f.key] = el;
+    el.__buttons = buttons;
   } else {
     el = document.createElement("input");
     el.type = f.type;
     if (f.placeholder) el.placeholder = f.placeholder;
     if (f.step) el.step = f.step;
-  }
-  el.id = f.key;
-  el.style.marginTop = "4px";
-  wrap.appendChild(el);
-  const targetGrid = AUTO_FIELD_KEYS.has(f.key) ? autoGrid : mainGrid;
-  if (targetGrid) {
+    el.id = f.key;
+    el.style.marginTop = "4px";
+    wrap.appendChild(el);
     targetGrid.appendChild(wrap);
-  } else {
-    console.warn("missing form grid for", f.key);
+    inputs[f.key] = el;
   }
-  inputs[f.key] = el;
 
-  if (commaFields.includes(f.key)) {
+  if (eokFields.includes(f.key)) {
     el.addEventListener("input", () => {
-      const caret = el.selectionStart;
-      const val = el.value.replace(/,/g, "");
-      if (/[^0-9]/.test(val)) {
-        el.value = val.replace(/[^0-9]/g, "");
-      }
-      // 포맷 후 커서 위치가 바뀔 수 있지만 단순 구현
+      const val = el.value.replace(/[^0-9.]/g, "");
+      el.value = val;
     });
-    el.addEventListener("blur", () => formatNumberField(el));
+    el.addEventListener("blur", () => formatEokField(el));
   }
 
   if (percentFields.includes(f.key)) {
@@ -895,14 +1080,16 @@ fields.forEach((f) => {
     el.addEventListener("blur", () => formatPercentField(el));
   }
 
-  el.addEventListener("change", () => {
-    saveFormState();
-    scheduleEvaluateVisibleMarkers();
-  });
-  el.addEventListener("blur", () => {
-    saveFormState();
-    scheduleEvaluateVisibleMarkers();
-  });
+  if (f.type !== "radio-chips") {
+    el.addEventListener("change", () => {
+      saveFormState();
+      scheduleEvaluateVisibleMarkers();
+    });
+    el.addEventListener("blur", () => {
+      saveFormState();
+      scheduleEvaluateVisibleMarkers();
+    });
+  }
 });
 
 // ----- 실거래가 검색 UI -----
@@ -913,6 +1100,9 @@ rpSuggestionsEl = document.getElementById("rp-suggestions");
 
 loadFormState();
 applyDefaultValues();
+if (inputs.areaBucket && !inputs.areaBucket.value) {
+  setAreaBucket(DEFAULT_AREA_BUCKET, { save: true, evaluate: false });
+}
 saveFormState();
 
 if (rpAptEl) rpAptEl.addEventListener("input", saveFormState);
@@ -944,11 +1134,11 @@ function renderSuggestions(list) {
         <div style="color:#475569; font-size:12px;">주소: ${addr}</div>
       `;
     row.addEventListener("click", () => {
-      // 가격/주소 자동 입력
-        inputs.price.value = amtWon.toLocaleString("ko-KR");
-      formatNumberField(inputs.price);
-        if (addr) {
-          inputs.address.value = addr;
+      // 가격/주소 자동 입력 (억 단위)
+      const priceEok = amtWon / EOK;
+      inputs.price.value = priceEok.toFixed(2);
+      if (addr) {
+        inputs.address.value = addr;
       }
       // 지도 핀을 이미 클릭한 상태에서 중복 마커가 겹치지 않도록 기본 마커는 숨기고 중심만 맞춤
       showAddressOnMap(addr, { showMarker: false });
@@ -963,7 +1153,8 @@ function renderSuggestions(list) {
       rpStatusEl.textContent = "자동입력 완료 (매매가·주소·상품구분 반영)";
       // 면적도 참고용으로 입력
       if (it.excluUseAr) {
-        inputs.areaOver85.value = Number(it.excluUseAr) > 85 ? "true" : "false";
+        const pyFromSqm = Number(it.excluUseAr) * 0.3025;
+        setAreaBucketFromPy(pyFromSqm, { save: true, evaluate: false });
       }
       saveFormState();
       scheduleEvaluateVisibleMarkers();
@@ -1009,19 +1200,30 @@ function triggerDealSearch(aptName) {
 }
 
 function readForm() {
+  const priceEok = parseEokField(inputs.price);
+  const incomeEok = parseEokField(inputs.incomeAnnual);
+  const equityEok = parseEokField(inputs.equity);
+  const areaBucketKey = inputs.areaBucket?.value || DEFAULT_AREA_BUCKET;
+  const monthlyMgmtFee = parseNumberField(inputs.monthlyMgmtFee) * 10000;
+  const propertyTaxAnnual = parseNumberField(inputs.propertyTaxAnnual) * 10000;
+  const parsedRate = parsePercentField(inputs.rate);
+  const rateValue = parsedRate > 0 ? parsedRate / 100 : DSR_DEFAULTS.baseInterest;
   return {
-    price: commaFields.includes("price") ? parseNumberField(inputs.price) : Number(inputs.price.value || 0),
-    incomeAnnual: commaFields.includes("incomeAnnual") ? parseNumberField(inputs.incomeAnnual) : Number(inputs.incomeAnnual.value || 0),
-    equity: commaFields.includes("equity") ? parseNumberField(inputs.equity) : Number(inputs.equity.value || 0),
+    price: priceEok * EOK,
+    incomeAnnual: incomeEok * EOK,
+    equity: equityEok * EOK,
     address: inputs.address.value || "",
     homeCount: Number(inputs.homeCount.value || 0),
     lifeFirst: inputs.lifeFirst.value === "true",
-    areaOver85: inputs.areaOver85.value === "true",
+    areaOver85: isAreaOver85ByBucket(areaBucketKey),
+    areaBucket: areaBucketKey,
     productType: inputs.productType.value || "아파트",
     tradeType: inputs.tradeType.value || "매매",
     years: inputs.years.value ? Number(inputs.years.value) : undefined,
-    rate: percentFields.includes("rate") ? parsePercentField(inputs.rate) / 100 : (inputs.rate.value ? Number(inputs.rate.value) : undefined),
+    rate: rateValue,
     repaymentType: inputs.repaymentType.value || undefined,
+    monthlyMgmtFee,
+    propertyTaxAnnual,
   };
 }
 
@@ -1031,22 +1233,21 @@ function formatKRW(n) {
 }
 
 function renderResult(r) {
+  const monthlyMgmt = Math.max(0, r.monthlyFixedCost - r.monthlyPayment - r.propertyTaxMonthly);
+  const savingRateLabel = (r.appliedSavingRate * 100).toFixed(1);
   const ruralLine = r.taxes.ruralTax > 0
     ? `<div class="result-row"><span>· 농특세</span><span>${formatKRW(r.taxes.ruralTax)}</span></div>`
     : "";
-  const monthlyLine = r.canPurchase
-    ? `<div class="result-row"><span>월 상환액</span><strong>${formatKRW(r.monthlyPayment)}</strong></div>`
-    : "";
   const shortageLine = r.shortage > 0
-    ? `<div class="result-row"><span>부족 (추가 필요 자금)</span><strong>-${formatKRW(r.shortage)}</strong></div>`
+    ? `<div class="result-row"><span>모자란 금액</span><strong>-${formatKRW(r.shortage)}</strong></div>`
     : "";
   const availabilityColor = r.canPurchase ? "#0f766e" : "#b91c1c";
   resultsEl.innerHTML = `
-    <div class="result-row"><span>대출한도 (min LTV/DSR)</span><strong>${formatKRW(r.loanLimit)}</strong></div>
+    <div class="result-row"><span>빌릴 수 있는 최대</span><strong>${formatKRW(r.loanLimit)}</strong></div>
     <div class="result-row"><span>· LTV 한도</span><span>${formatKRW(r.ltvLimit)}</span></div>
     <div class="result-row"><span>· DSR 한도</span><span>${formatKRW(r.dsrLimit)}</span></div>
     <hr />
-    <div class="result-row"><span>취득세 합계</span><strong>${formatKRW(r.taxes.total)}</strong></div>
+    <div class="result-row"><span>취득·세금 합계</span><strong>${formatKRW(r.taxes.total)}</strong></div>
     <div class="result-row"><span>· 취득세</span><span>${formatKRW(r.taxes.acquisitionTax)}</span></div>
     ${ruralLine}
     <div class="result-row"><span>· 교육세</span><span>${formatKRW(r.taxes.educationTax)}</span></div>
@@ -1057,15 +1258,21 @@ function renderResult(r) {
     <div class="result-row"><span>필요 자금 (매매가+세금비용-대출)</span><strong>${formatKRW(r.neededCash)}</strong></div>
     <div class="result-row"><span>보유 자산</span><span>${formatKRW(r.equity)}</span></div>
     ${shortageLine}
-    ${monthlyLine}
     <hr />
-    <div class="result-row"><span>매입 가능 여부</span><strong style="color:${availabilityColor};">${r.canPurchase ? "가능" : "불가능"}</strong></div>
-    <div class="result-row"><span>부족 시 소요 기간(연)</span><span style="color:${availabilityColor};">${r.yearsToSave}</span></div>
+    <div class="result-row"><span>월 고정비(원리금+관리비+재산세/12)</span><strong>${formatKRW(r.monthlyFixedCost)}</strong></div>
+    <div class="result-row"><span>· 월 상환액</span><span>${formatKRW(r.monthlyPayment)}</span></div>
+    <div class="result-row"><span>· 월 관리비</span><span>${formatKRW(monthlyMgmt)}</span></div>
+    <div class="result-row"><span>· 재산세/12</span><span>${formatKRW(r.propertyTaxMonthly)}</span></div>
+    <hr />
+    <div class="result-row"><span>지금 살 수 있나요?</span><strong style="color:${availabilityColor};">${r.canPurchase ? "지금 가능" : "조금 더 필요"}</strong></div>
+    <div class="result-row"><span>부족 시 모아야 할 기간(년)</span><span style="color:${availabilityColor};">${r.yearsToSave}</span></div>
+    <div class="result-row"><span>적용 저축률</span><span>${savingRateLabel}%</span></div>
   `;
+  resultsEl.innerHTML += `<div style="font-size:12px; color:#64748b; margin-top:6px;">평균 저축률 ${savingRateLabel}% (OECD 한국 가계순저축률 참고치)로 계산했어요.</div>`;
 }
 
 function validate(form) {
-  if (form.price <= 0) return "매매가를 입력해주세요";
+  if (form.price <= 0) return "집 가격(억원)을 입력해주세요";
   if (form.incomeAnnual < 0) return "연소득은 0 이상";
   if (form.homeCount < 0) return "주택 수는 0 이상";
   return null;

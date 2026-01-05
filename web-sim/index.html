@@ -36,16 +36,16 @@
   </style>
 </head>
 <body>
-  <h1 style="display:flex;align-items:center;gap:8px;">🏠 부동산뚝딱 <span style="font-size:16px; color:#ff7a1a;">내가 살 수 있는 아파트는 뭘까</span></h1>
-  <p style="margin-top:0;color:#475569;font-size:13px;">지도에서 단지를 선택하면 아파트명이 입력됩니다. (서울 주소는 임시로 투기/조정 적용)</p>
+  <h1 style="display:flex;align-items:center;gap:8px;">🏠 부동산뚝딱 <span style="font-size:16px; color:#ff7a1a;">내 조건으로 바로 계산</span></h1>
+  <p style="margin-top:0;color:#475569;font-size:13px;">지도나 검색에서 아파트를 고르면 이름과 가격(억 단위)이 자동으로 입력돼요. (서울 주소는 임시로 투기/조정 적용)</p>
   <div class="card" style="margin-bottom:12px; background:#fff7ed; border-color:#fed7aa;">
     <div style="font-size:12px; color:#0f172a; line-height:1.6;">
-      사용법: ① 기본 입력(소득·자산·대출 조건)을 채우세요. ② 지도에서 단지를 클릭하거나 아래 "실거래가 불러오기"에 이름을 입력해 드롭다운에서 한 건을 선택하세요. ③ 가격·주소가 자동 입력된 것을 확인하고 "계산하기"를 눌러 결과를 봅니다.
+      사용법: ① 내 조건(소득·현금·대출 조건)을 입력하고 평형·관리비를 선택하세요. ② 지도에서 단지를 클릭하거나 "실거래가 불러오기"에서 이름을 검색해 한 건을 고르세요. ③ 자동으로 채워진 억 단위 가격과 주소를 확인하고 "계산하기"를 눌러 결과를 봅니다.
     </div>
   </div>
 
   <div class="card" style="margin-bottom:12px;">
-    <h3>입력 (기본)</h3>
+    <h3>내 조건 입력</h3>
     <div class="grid" id="form-grid-main"></div>
   </div>
 
@@ -68,7 +68,7 @@
   </div>
 
   <div class="card" style="margin-bottom:12px;">
-    <h3>가격 · 주소 입력</h3>
+    <h3>집 가격 · 주소 (억 단위)</h3>
     <div class="grid" id="form-grid-auto"></div>
     <div style="margin-top:12px; display:flex; gap:8px;">
       <button id="calc-btn">계산하기</button>
